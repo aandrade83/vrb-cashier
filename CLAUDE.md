@@ -25,6 +25,7 @@ No test framework is configured yet.
 -/docs/auth.md
 -/docs/server-components.md
 -/docs/routing.md
+-/docs/security.md
 
 
 ## Architecture

@@ -52,9 +52,17 @@ Use Clerk's pre-built components for all auth-related UI.
 import { SignInButton, SignUpButton, UserButton, SignedIn, SignedOut } from "@clerk/nextjs";
 ```
 
-- Do **not** build custom sign-in/sign-up forms.
-- Use `<SignedIn>` and `<SignedOut>` to conditionally render content based on auth state.
-- Use `<UserButton />` for the user account/profile menu.
+
+## - Use `<SignedIn>` and `<SignedOut>` to conditionally render content based on auth state.
+ - Use `<UserButton />` for the user account/profile menu.
+
+ Loggin proccess works this way,
+ SIGN IN : 
+ 1. user enter email
+ 2. user enter password
+ 3. if credentials are valid, system send an code by mail, once the code is verified user is loggin and is redirected
+ to his page according the role
+ 
 
 ## Environment Variables
 

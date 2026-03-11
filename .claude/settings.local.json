@@ -5,7 +5,31 @@
       "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npm install @clerk/nextjs)",
       "Bash(ls -la \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/\" | grep -E \"\\\\.\\(json|js|ts|mjs\\)$\")",
       "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npm install zod svix 2>&1)",
-      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npx shadcn@latest init -d 2>&1)"
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npx shadcn@latest init -d 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npx shadcn@latest add card input label select table badge separator avatar sidebar --yes 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npm run build 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier/src\" && cp middleware.ts proxy.ts && rm middleware.ts 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && node -e \"const c = require\\('@clerk/nextjs'\\); console.log\\(Object.keys\\(c\\).filter\\(k => k.toLowerCase\\(\\).includes\\('sign'\\) || k.toLowerCase\\(\\).includes\\('auth'\\)\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && node -e \"console.log\\(require\\('@clerk/nextjs/package.json'\\).version\\)\")",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && cat node_modules/@clerk/nextjs/package.json | python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['version']\\)\")",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && node -e \"const {SignIn} = require\\('@clerk/clerk-js'\\); console.log\\(Object.getOwnPropertyNames\\(SignIn.prototype\\).join\\('\\\\n'\\)\\)\" 2>&1 | head -50)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && find node_modules/@clerk -name \"*.d.ts\" | xargs grep -l \"attemptFirstFactor\" 2>/dev/null | head -5)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && find node_modules/@clerk -name \"*.js\" | xargs grep -l \"attemptFirstFactor\" 2>/dev/null | head -5)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && find node_modules/@clerk -name \"*.mjs\" | xargs grep -l \"attemptFirstFactor\" 2>/dev/null | head -5)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && find node_modules/@clerk/nextjs -type f \\\\\\( -name \"*.mjs\" -o -name \"*.js\" \\\\\\) | xargs grep -l \"signIn\\\\|SignIn\" 2>/dev/null | head -5)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && find node_modules/@clerk/react -type f -name \"*.js\" | xargs grep -l \"useSignIn\\\\|attemptFirstFactor\" 2>/dev/null | head -5)",
+      "Bash(netstat -ano | findstr :3000)",
+      "Bash(taskkill /F /PID 23096 && taskkill /F /PID 3828 2>/dev/null; echo \"done\")",
+      "Bash(taskkill //F //PID 23096)",
+      "Bash(echo \"\nNEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in\nNEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up\" >> \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/.env.local\")",
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && node -e \"const c = require\\('@clerk/nextjs'\\); console.log\\(Object.keys\\(c\\).filter\\(k => /sign|auth|user|session/i.test\\(k\\)\\).sort\\(\\)\\)\")",
+      "Bash(grep -l \"SignInResource\" \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\node_modules\\\\@clerk\\\\shared\\\\dist\\\\runtime\\\\types\"/* 2>/dev/null | head -5)",
+      "Bash(grep -r \"interface SignInResource\\\\|type SignInResource\" \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\node_modules\\\\@clerk\\\\shared\\\\dist\" --include=\"*.d.ts\" --include=\"*.d.mts\" 2>/dev/null | head -5)",
+      "Bash(grep -r \"emailAddressId\\\\|email_address_id\" \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\node_modules\\\\@clerk\\\\shared\\\\dist\\\\runtime\" --include=\"*.d.ts\" 2>/dev/null | head -20)",
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && node -e \"\nconst { useSignIn } = require\\('@clerk/nextjs'\\);\nconst clerk = require\\('@clerk/clerk-js'\\);\nconsole.log\\('clerk-js version:', require\\('./node_modules/@clerk/clerk-js/package.json'\\).version\\);\nconsole.log\\('clerk-react version:', require\\('./node_modules/@clerk/react/package.json'\\).version\\);\nconsole.log\\('clerk-nextjs version:', require\\('./node_modules/@clerk/nextjs/package.json'\\).version\\);\n\")",
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && node -e \"\nconsole.log\\('clerk-react:', require\\('./node_modules/@clerk/react/package.json'\\).version\\);\nconsole.log\\('clerk-nextjs:', require\\('./node_modules/@clerk/nextjs/package.json'\\).version\\);\nconsole.log\\('clerk-shared:', require\\('./node_modules/@clerk/shared/package.json'\\).version\\);\n\")",
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && node -e \"\nconst keys = Object.keys\\(require\\('./node_modules/@clerk/nextjs/dist/cjs/index.js'\\)\\);\nconsole.log\\(keys.sort\\(\\).join\\('\\\\n'\\)\\);\n\" 2>&1 | head -60)",
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && node -e \"\n// Check what methods the signIn resource has by inspecting types\nconst fs = require\\('fs'\\);\nconst typesPath = './node_modules/@clerk/types/dist/index.d.ts';\nif \\(fs.existsSync\\(typesPath\\)\\) {\n  const content = fs.readFileSync\\(typesPath, 'utf8'\\);\n  const match = content.match\\(/interface SignInResource[\\\\s\\\\S]{0,2000}/\\);\n  if \\(match\\) console.log\\(match[0]\\);\n} else {\n  console.log\\('types file not found, checking shared...'\\);\n  const files = fs.readdirSync\\('./node_modules/@clerk/shared/dist/'\\);\n  console.log\\(files.slice\\(0,20\\)\\);\n}\n\")"
     ]
   }
 }
