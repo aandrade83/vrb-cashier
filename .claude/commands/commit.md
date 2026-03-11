@@ -1,0 +1,1 @@
+Generate a commit message based on the changes within the current branch. The commit message must be short and to-the-point and provide a summary of the changes. then commit those changes to the current branch.

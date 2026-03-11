@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" -maxdepth 2 -type f -name \"*.md\" -o -name \"CLAUDE.md\" -o -name \".cursorrules\" -o -name \"copilot-instructions.md\" 2>/dev/null | head -20)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npm install @clerk/nextjs)",
+      "Bash(ls -la \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/\" | grep -E \"\\\\.\\(json|js|ts|mjs\\)$\")",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npm install zod svix 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\" && npx shadcn@latest init -d 2>&1)"
+    ]
+  }
+}

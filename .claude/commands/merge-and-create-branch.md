@@ -1,0 +1,1 @@
+commit any changed in the current branch brand and provide a suitable commit message based on the code changed. then merge the current branch into the $1 branch and resolve any issues off the back of that merge. then create a new branch called $2
