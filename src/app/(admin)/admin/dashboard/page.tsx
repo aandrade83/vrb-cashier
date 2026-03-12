@@ -16,6 +16,16 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
         </Link>
+        <Link href="/admin/methods">
+          <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
+            <CardHeader>
+              <CardTitle>Methods</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground text-sm">Manage deposit and payout payment methods.</p>
+            </CardContent>
+          </Card>
+        </Link>
         <Card>
           <CardHeader>
             <CardTitle>Transactions</CardTitle>
