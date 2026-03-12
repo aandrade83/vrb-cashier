@@ -2,6 +2,7 @@ import { Webhook } from "svix";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 type ClerkUserCreatedData = {
   id: string;
@@ -9,7 +10,6 @@ type ClerkUserCreatedData = {
   first_name: string | null;
   last_name: string | null;
   image_url: string | null;
-  public_metadata: { role?: string };
 };
 
 export async function POST(request: Request) {
@@ -41,32 +41,36 @@ export async function POST(request: Request) {
   }
 
   if (evt.type === "user.created") {
-    const { id: clerkId, email_addresses, first_name, last_name, image_url, public_metadata } = evt.data;
+    const { id: clerkId, email_addresses, first_name, last_name, image_url } = evt.data;
 
-    // If the user was created by an admin via createUserAction, the role is already
-    // set in public_metadata at creation time. Use it directly — never overwrite.
-    const role = (public_metadata?.role === "admin" || public_metadata?.role === "clerk")
-      ? public_metadata.role
-      : "player";
+    // If createUserAction already inserted this user (admin-created), skip entirely.
+    // The role and metadata are already correct — the webhook must not overwrite them.
+    const existing = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1);
 
-    // Only patch metadata for self-registered players (role not already set by admin).
-    if (role === "player") {
-      const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}/metadata`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ public_metadata: { role: "player" } }),
-      });
-
-      if (!metadataRes.ok) {
-        console.error("[webhook/clerk] Failed to assign player role to user:", clerkId);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-      }
+    if (existing.length > 0) {
+      return NextResponse.json({ success: true });
     }
 
-    const userUpdateRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
+    // Self-registered player: assign player role in Clerk metadata and insert into DB.
+    const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}/metadata`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ public_metadata: { role: "player" } }),
+    });
+
+    if (!metadataRes.ok) {
+      console.error("[webhook/clerk] Failed to assign player role to user:", clerkId);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
@@ -75,13 +79,9 @@ export async function POST(request: Request) {
       body: JSON.stringify({ skip_password_requirement: true }),
     });
 
-    if (!userUpdateRes.ok) {
-      console.error("[webhook/clerk] Failed to update password requirement for user:", clerkId);
-    }
-
     await db.insert(users).values({
       clerkId,
-      role,
+      role: "player",
       email: email_addresses[0]?.email_address ?? "",
       firstName: first_name ?? null,
       lastName: last_name ?? null,

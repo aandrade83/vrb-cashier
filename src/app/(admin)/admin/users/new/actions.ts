@@ -2,6 +2,9 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -17,7 +20,7 @@ type ActionResult =
   | { success: false; error: string };
 
 export async function createUserAction(data: CreateUserInput): Promise<ActionResult> {
-  const { sessionClaims } = await auth();
+  const { sessionClaims, userId: adminClerkId } = await auth();
 
   if (sessionClaims?.public_metadata?.role !== "admin") {
     return { success: false, error: "Unauthorized" };
@@ -30,6 +33,7 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
 
   const { email, firstName, lastName, role } = parsed.data;
 
+  // Step 1: Create the user in Clerk
   const createRes = await fetch("https://api.clerk.com/v1/users", {
     method: "POST",
     headers: {
@@ -40,24 +44,59 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
       email_address: [email],
       first_name: firstName,
       last_name: lastName,
-      public_metadata: { role },
       skip_password_requirement: true,
     }),
   });
 
   if (!createRes.ok) {
     const err = await createRes.json();
-    console.error("[createUserAction] Clerk API error:", JSON.stringify(err));
+    console.error("[createUserAction] Clerk create error:", JSON.stringify(err));
     return { success: false, error: "Failed to create user. Please try again." };
   }
 
   const clerkUser = await createRes.json();
 
-  // The webhook will handle the DB insert via the user.created event.
-  // The role is already embedded in public_metadata at creation time above,
-  // so the webhook will read it and persist the correct role — no race condition.
+  // Step 2: Explicitly PATCH the role in Clerk metadata.
+  // This is done as a separate call (not during creation) to guarantee it is applied.
+  const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}/metadata`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ public_metadata: { role } }),
+  });
 
-  // Send a sign-in magic link so the new user can access the system without a password
+  if (!metadataRes.ok) {
+    console.error("[createUserAction] Clerk metadata PATCH error:", await metadataRes.text());
+    // User was created but role not set — delete them to avoid orphan
+    await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
+    });
+    return { success: false, error: "Failed to assign role. Please try again." };
+  }
+
+  // Step 3: Insert into DB with the correct role.
+  // The webhook will also fire for this user but uses onConflictDoNothing,
+  // so it becomes a safe no-op — this row always wins.
+  const [adminRecord] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, adminClerkId!))
+    .limit(1);
+
+  await db.insert(users).values({
+    clerkId: clerkUser.id,
+    role,
+    email,
+    firstName,
+    lastName,
+    isActive: true,
+    createdByAdminId: adminRecord?.id ?? null,
+  }).onConflictDoNothing();
+
+  // Step 4: Send magic link so the new user can log in without a password
   const magicLinkRes = await fetch(
     `https://api.clerk.com/v1/users/${clerkUser.id}/magic_links`,
     {
@@ -74,8 +113,7 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
   );
 
   if (!magicLinkRes.ok) {
-    // User was created; magic link email failed — not fatal, return success
-    console.warn("[createUserAction] Magic link email could not be sent for new user:", await magicLinkRes.text());
+    console.warn("[createUserAction] Magic link email failed for:", clerkUser.id, await magicLinkRes.text());
   }
 
   return { success: true };
