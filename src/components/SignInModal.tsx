@@ -33,14 +33,13 @@ export default function SignInModal() {
     setError("");
     setLoading(true);
     try {
-      const { error: createError } = await signIn!.create({ identifier: email });
+      // Force email-code authentication by specifying the strategy
+      const { error: createError } = await signIn!.create({ 
+        identifier: email,
+        strategy: "email_code"
+      });
       if (createError) {
         setError(createError.message ?? "Could not find account.");
-        return;
-      }
-      const { error: sendError } = await signIn!.emailCode.sendCode();
-      if (sendError) {
-        setError(sendError.message ?? "Could not send code.");
         return;
       }
       setPhase("code");
@@ -56,7 +55,10 @@ export default function SignInModal() {
     setError("");
     setLoading(true);
     try {
-      const { error: verifyError } = await signIn!.emailCode.verifyCode({ code });
+      const { error: verifyError } = await signIn!.attemptFirstFactor({ 
+        strategy: "email_code", 
+        code 
+      });
       if (verifyError) {
         setError(verifyError.message ?? "Invalid code.");
         return;
