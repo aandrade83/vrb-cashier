@@ -2,9 +2,6 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -56,36 +53,9 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
 
   const clerkUser = await createRes.json();
 
-  // Insert into DB FIRST — the webhook checks for this row to detect admin-created
-  // users and skip its "player" metadata overwrite. This must happen before any
-  // async Clerk operations so the webhook always finds the row.
-  const { userId: adminClerkId } = await auth();
-  const [adminRecord] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, adminClerkId!))
-    .limit(1);
-
-  await db.insert(users).values({
-    clerkId: clerkUser.id,
-    role,
-    email,
-    firstName,
-    lastName,
-    isActive: true,
-    createdByAdminId: adminRecord?.id ?? null,
-  }).onConflictDoNothing();
-
-  // PATCH metadata last — this runs after the DB insert and after the webhook has
-  // already fired on Vercel, so it always wins regardless of webhook timing.
-  await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}/metadata`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ public_metadata: { role } }),
-  });
+  // The webhook will handle the DB insert via the user.created event.
+  // The role is already embedded in public_metadata at creation time above,
+  // so the webhook will read it and persist the correct role — no race condition.
 
   // Send a sign-in magic link so the new user can access the system without a password
   const magicLinkRes = await fetch(
