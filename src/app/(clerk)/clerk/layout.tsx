@@ -1,4 +1,5 @@
 import { UserButton } from "@clerk/nextjs";
+import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
 
 const navItems = [
@@ -21,7 +22,10 @@ export default function ClerkLayout({ children }: { children: React.ReactNode })
             </Link>
           ))}
         </nav>
-        <UserButton />
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <UserButton />
+        </div>
       </header>
       <main className="flex-1 p-6">{children}</main>
     </div>

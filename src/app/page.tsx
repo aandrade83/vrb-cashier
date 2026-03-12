@@ -2,6 +2,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import SignInModal from "@/components/SignInModal";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
 
 function homeForRole(role: string): string {
@@ -20,6 +21,9 @@ export default async function Home() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold tracking-tight">VRB Cashier</h1>
         <p className="text-muted-foreground">Secure cashier management system</p>
