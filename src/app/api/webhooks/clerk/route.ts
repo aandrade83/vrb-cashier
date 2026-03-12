@@ -2,6 +2,7 @@ import { Webhook } from "svix";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 type ClerkUserCreatedData = {
   id: string;
@@ -42,7 +43,21 @@ export async function POST(request: Request) {
   if (evt.type === "user.created") {
     const { id: clerkId, email_addresses, first_name, last_name, image_url } = evt.data;
 
-    // 1. Set role in Clerk metadata and skip password requirement
+    // Check if this user was already inserted by createUserAction (admin-created users).
+    // createUserAction inserts into the DB synchronously before returning, so if the row
+    // exists here the role is already correct — skip all Clerk metadata writes entirely.
+    const existing = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Admin-created user — DB row and Clerk metadata already set correctly.
+      return NextResponse.json({ success: true });
+    }
+
+    // Self-registered player — set role and skip password requirement in Clerk.
     const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}/metadata`, {
       method: "PATCH",
       headers: {
@@ -57,7 +72,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
-    // 2. Update user to skip password requirement for consistent authentication flow
     const userUpdateRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
       method: "PATCH",
       headers: {
@@ -69,10 +83,8 @@ export async function POST(request: Request) {
 
     if (!userUpdateRes.ok) {
       console.error("[webhook/clerk] Failed to update password requirement for user:", clerkId);
-      // Non-fatal error - continue with user creation in database
     }
 
-    // 3. Insert user into Neon DB
     await db.insert(users).values({
       clerkId,
       role: "player",
@@ -80,7 +92,7 @@ export async function POST(request: Request) {
       firstName: first_name ?? null,
       lastName: last_name ?? null,
       avatarUrl: image_url ?? null,
-    }).onConflictDoNothing();
+    });
   }
 
   return NextResponse.json({ success: true });
