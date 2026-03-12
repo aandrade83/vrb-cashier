@@ -44,7 +44,9 @@
       "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run lint 2>&1)",
       "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -20)",
       "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -25)",
-      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -5)"
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -5)",
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run lint 2>&1 | grep -E \"error|warning\" | head -20)",
+      "WebFetch(domain:clerk.com)"
     ]
   }
 }
