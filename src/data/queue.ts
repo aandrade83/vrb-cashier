@@ -7,7 +7,7 @@ import {
   transactionAttachments,
   transactionUpdates,
 } from "@/db/schema";
-import { eq, inArray, desc, asc } from "drizzle-orm";
+import { eq, inArray, desc, asc, and } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 // ─── Queue list row ────────────────────────────────────────────────────────────
@@ -59,6 +59,49 @@ export async function getPendingTransactions(): Promise<QueueTransaction[]> {
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
     .where(inArray(transactions.status, ["pending", "in_progress"]))
     .orderBy(asc(transactions.createdAt));
+
+  return rows;
+}
+
+// ─── Completed transactions ────────────────────────────────────────────────────
+
+export async function getCompletedTransactions(
+  type: "deposit" | "payout",
+  limit = 10
+): Promise<QueueTransaction[]> {
+  const clerkUser = alias(users, "clerk_user");
+
+  const rows = await db
+    .select({
+      id: transactions.id,
+      referenceCode: transactions.referenceCode,
+      type: transactions.type,
+      status: transactions.status,
+      amount: transactions.amount,
+      currency: transactions.currency,
+      methodName: paymentMethods.name,
+      playerFirstName: users.firstName,
+      playerLastName: users.lastName,
+      playerEmail: users.email,
+      lockedByClerkId: transactions.lockedByClerkId,
+      lockedByClerkFirstName: clerkUser.firstName,
+      lockedByClerkLastName: clerkUser.lastName,
+      lockedAt: transactions.lockedAt,
+      lockExpiresAt: transactions.lockExpiresAt,
+      createdAt: transactions.createdAt,
+    })
+    .from(transactions)
+    .innerJoin(users, eq(transactions.playerId, users.id))
+    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
+    .where(
+      and(
+        inArray(transactions.status, ["approved", "rejected", "completed"]),
+        eq(transactions.type, type)
+      )
+    )
+    .orderBy(desc(transactions.createdAt))
+    .limit(limit);
 
   return rows;
 }

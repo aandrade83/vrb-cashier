@@ -16,6 +16,7 @@ import { eq } from "drizzle-orm";
 type ActionResult = { success: true; methodId?: string } | { success: false; error: string };
 
 const fieldSchema = z.object({
+  id: z.string().uuid().optional(),
   label: z.string().min(1),
   placeholder: z.string().optional().nullable(),
   fieldType: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox"]),

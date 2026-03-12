@@ -15,6 +15,11 @@ type Params = {
 export async function sendStatusUpdateEmail(
   params: Params
 ): Promise<{ success: boolean; error?: string }> {
+  if (!process.env.RESEND_API_KEY) {
+    console.error("[sendStatusUpdateEmail] RESEND_API_KEY is not set");
+    return { success: false, error: "RESEND_API_KEY is not configured" };
+  }
+
   try {
     const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -102,11 +107,13 @@ export async function sendStatusUpdateEmail(
     });
 
     if (error) {
+      console.error("[sendStatusUpdateEmail] Resend error:", error);
       return { success: false, error: error.message };
     }
 
     return { success: true };
   } catch (err) {
+    console.error("[sendStatusUpdateEmail] Unexpected error:", err);
     return { success: false, error: err instanceof Error ? err.message : "Unknown email error" };
   }
 }

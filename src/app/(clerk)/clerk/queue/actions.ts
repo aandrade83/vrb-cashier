@@ -72,7 +72,6 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
       });
     }
 
-    revalidatePath("/clerk/queue");
     return { acquired: true, lockedByClerkId: clerk.id };
   }
 
