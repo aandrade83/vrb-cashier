@@ -30,9 +30,10 @@ import type { User } from "@/db/schema";
 
 type Props = {
   users: User[];
+  currentUserId?: string | null;
 };
 
-export function UsersTable({ users }: Props) {
+export function UsersTable({ users, currentUserId }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -55,6 +56,9 @@ export function UsersTable({ users }: Props) {
       setPendingId(null);
     });
   }
+
+  // Define constants for protected users
+  const ROOT_USER_ID = "8bcd74e0-f9a5-4b81-a65b-7b52f1b064cc";
 
   return (
     <Table>
@@ -83,6 +87,11 @@ export function UsersTable({ users }: Props) {
             const isRowPending = pendingId === user.clerkId && isPending;
             const initials =
               (user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "");
+            
+            // Check if delete should be disabled
+            const isCurrentUser = currentUserId === user.clerkId;
+            const isRootUser = user.clerkId === ROOT_USER_ID;
+            const canDelete = !isCurrentUser && !isRootUser && user.role !== "player";
 
             return (
               <TableRow key={user.id}>
@@ -126,7 +135,7 @@ export function UsersTable({ users }: Props) {
                       {user.isActive ? "Disable" : "Enable"}
                     </Button>
 
-                    {user.role !== "player" && (
+                    {canDelete ? (
                       <AlertDialog>
                         <AlertDialogTrigger
                           render={
@@ -161,7 +170,22 @@ export function UsersTable({ users }: Props) {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
-                    )}
+                    ) : user.role !== "player" ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled
+                        title={
+                          isCurrentUser
+                            ? "You cannot delete your own account"
+                            : isRootUser
+                            ? "Root user cannot be deleted"
+                            : "Cannot delete this user"
+                        }
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>

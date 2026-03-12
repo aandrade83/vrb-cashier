@@ -18,7 +18,7 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https://img.clerk.com https://*.clerk.accounts.dev",
+      "img-src 'self' data: https://img.clerk.com https://*.clerk.accounts.dev https://*.public.blob.vercel-storage.com",
       "connect-src 'self' https://api.clerk.com https://*.clerk.accounts.dev https://clerk.com https://challenges.cloudflare.com",
       "frame-src 'self' https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
       "font-src 'self'",
@@ -28,6 +28,14 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.public.blob.vercel-storage.com",
+      },
+    ],
+  },
   async headers() {
     return [
       {

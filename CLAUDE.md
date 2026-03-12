@@ -26,6 +26,7 @@ No test framework is configured yet.
 -/docs/server-components.md
 -/docs/routing.md
 -/docs/security.md
+-/docs/PROMPT_clerk_queue.md
 
 
 ## Architecture

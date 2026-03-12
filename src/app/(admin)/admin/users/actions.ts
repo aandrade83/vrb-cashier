@@ -94,6 +94,20 @@ export async function deleteUserAction(data: {
 
   const { clerkId } = parsed.data;
 
+  // Get current user's ID
+  const { userId: currentUserId } = await auth();
+
+  // Check if trying to delete self
+  if (currentUserId === clerkId) {
+    return { success: false, error: "You cannot delete your own account." };
+  }
+
+  // Check if trying to delete root user
+  const ROOT_USER_ID = "8bcd74e0-f9a5-4b81-a65b-7b52f1b064cc";
+  if (clerkId === ROOT_USER_ID) {
+    return { success: false, error: "Root user cannot be deleted." };
+  }
+
   const [user] = await db
     .select({ role: users.role })
     .from(users)
