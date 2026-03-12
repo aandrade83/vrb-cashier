@@ -47,7 +47,11 @@
       "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -5)",
       "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run lint 2>&1 | grep -E \"error|warning\" | head -20)",
       "WebFetch(domain:clerk.com)",
-      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && node -e \"const p = require\\('./package.json'\\); console.log\\(p.dependencies['@vercel/blob']\\)\")"
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && node -e \"const p = require\\('./package.json'\\); console.log\\(p.dependencies['@vercel/blob']\\)\")",
+      "Bash(ls -la /c/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/src/ | grep -E \"middleware|\\\\.ts$\")",
+      "Bash(ls -la /c/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/src/app/\\\\\\(player\\\\\\)/player/deposits/)",
+      "Bash(ls -la /c/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/src/app/\\\\\\(player\\\\\\)/player/)",
+      "Bash(ls -la /c/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/*.ts 2>/dev/null || echo \"No .ts files in root\"})"
     ]
   }
 }

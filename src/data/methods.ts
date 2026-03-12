@@ -27,6 +27,44 @@ export type MethodInput = {
   fields: FieldInput[];
 };
 
+export async function getActiveDepositMethods(): Promise<PaymentMethod[]> {
+  return db
+    .select()
+    .from(paymentMethods)
+    .where(
+      and(
+        eq(paymentMethods.type, "deposit"),
+        eq(paymentMethods.isActive, true),
+        eq(paymentMethods.isDeleted, false)
+      )
+    )
+    .orderBy(paymentMethods.createdAt);
+}
+
+export async function getMethodWithFields(methodId: string): Promise<MethodWithFields | null> {
+  const [method] = await db
+    .select()
+    .from(paymentMethods)
+    .where(
+      and(
+        eq(paymentMethods.id, methodId),
+        eq(paymentMethods.isActive, true),
+        eq(paymentMethods.isDeleted, false)
+      )
+    )
+    .limit(1);
+
+  if (!method) return null;
+
+  const fields = await db
+    .select()
+    .from(methodFields)
+    .where(eq(methodFields.methodId, methodId))
+    .orderBy(methodFields.displayOrder);
+
+  return { ...method, fields };
+}
+
 export async function getMethodsForAdmin(
   type: "deposit" | "payout"
 ): Promise<MethodWithFieldCount[]> {
