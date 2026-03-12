@@ -20,14 +20,18 @@ function homeForRole(role: string): string {
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
+  const role = sessionClaims?.metadata?.role;
+
+  // Authenticated user on "/" → send to their dashboard before public route check
+  if (userId && role && req.nextUrl.pathname === "/") {
+    return NextResponse.redirect(new URL(homeForRole(role), req.url));
+  }
 
   if (isPublicRoute(req)) return NextResponse.next();
 
   if (!userId) {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }
-
-  const role = sessionClaims?.metadata?.role;
 
   // Webhook may not have fired yet — redirect to pending page
   if (!role) {
@@ -42,11 +46,6 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(new URL(homeForRole(role), req.url));
   }
   if (isPlayerRoute(req) && role !== "player") {
-    return NextResponse.redirect(new URL(homeForRole(role), req.url));
-  }
-
-  // Redirect root to role home
-  if (req.nextUrl.pathname === "/") {
     return NextResponse.redirect(new URL(homeForRole(role), req.url));
   }
 
