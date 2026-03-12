@@ -47,7 +47,7 @@ export default async function PlayerTransactionsPage() {
                 <TableRow>
                   <TableHead>Reference</TableHead>
                   <TableHead>Date</TableHead>
-                  <TableHead>Player</TableHead>
+                  <TableHead>Player Account</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Method</TableHead>
                   <TableHead>Amount</TableHead>
