@@ -42,8 +42,8 @@ export async function POST(request: Request) {
   if (evt.type === "user.created") {
     const { id: clerkId, email_addresses, first_name, last_name, image_url } = evt.data;
 
-    // 1. Set role in Clerk metadata
-    const res = await fetch(`https://api.clerk.com/v1/users/${clerkId}/metadata`, {
+    // 1. Set role in Clerk metadata and skip password requirement
+    const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}/metadata`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
@@ -52,12 +52,27 @@ export async function POST(request: Request) {
       body: JSON.stringify({ public_metadata: { role: "player" } }),
     });
 
-    if (!res.ok) {
+    if (!metadataRes.ok) {
       console.error("[webhook/clerk] Failed to assign player role to user:", clerkId);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 
-    // 2. Insert user into Neon DB
+    // 2. Update user to skip password requirement for consistent authentication flow
+    const userUpdateRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ skip_password_requirement: true }),
+    });
+
+    if (!userUpdateRes.ok) {
+      console.error("[webhook/clerk] Failed to update password requirement for user:", clerkId);
+      // Non-fatal error - continue with user creation in database
+    }
+
+    // 3. Insert user into Neon DB
     await db.insert(users).values({
       clerkId,
       role: "player",
