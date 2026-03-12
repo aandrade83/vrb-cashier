@@ -13,7 +13,7 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<{ role?: string }>;
 }) {
-  await auth();
+  const { userId } = await auth();
 
   const { role } = await searchParams;
   const validRole: AdminRole | undefined =
@@ -32,7 +32,7 @@ export default async function UsersPage({
       <RoleFilterTabs currentRole={validRole} />
       <Card>
         <CardContent className="p-0">
-          <UsersTable users={userList} />
+          <UsersTable users={userList} currentUserId={userId} />
         </CardContent>
       </Card>
     </div>
