@@ -85,7 +85,7 @@ export default async function DepositsPage() {
                 <div className="space-y-0.5">
                   <p className="font-medium">{tx.methodName}</p>
                   <p className="text-muted-foreground text-xs">
-                    {format(tx.createdAt, "do MMM yyyy")} · <span className="capitalize">{tx.type}</span>
+                    {[tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ")} · {format(tx.createdAt, "do MMM yyyy")} · <span className="capitalize">{tx.type}</span>
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

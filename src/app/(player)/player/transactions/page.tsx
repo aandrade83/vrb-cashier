@@ -47,6 +47,7 @@ export default async function PlayerTransactionsPage() {
                 <TableRow>
                   <TableHead>Reference</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead>Player</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Method</TableHead>
                   <TableHead>Amount</TableHead>
@@ -59,6 +60,9 @@ export default async function PlayerTransactionsPage() {
                     <TableCell className="font-mono text-sm">{tx.referenceCode}</TableCell>
                     <TableCell className="text-sm">
                       {format(tx.createdAt, "do MMM yyyy")}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {[tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || "—"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">

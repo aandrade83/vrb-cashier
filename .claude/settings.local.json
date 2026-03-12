@@ -54,7 +54,8 @@
       "Bash(ls -la /c/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier/*.ts 2>/dev/null || echo \"No .ts files in root\"})",
       "Bash(test -f \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\\\(player\\)\\\\player\\\\page.tsx\" && echo \"EXISTS\" || echo \"NOT_EXISTS\")",
       "Bash(test -f \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\\\(player\\)\\\\player\\\\deposits\\\\page.tsx\" && echo \"DEPOSITS_EXISTS\" || echo \"DEPOSITS_NOT_EXISTS\")",
-      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -30)"
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -30)",
+      "Bash(cd \"C:/Users/alexi/OneDrive/Documents/TRABAJO/CASHIER/vrb-cashier\" && npm run build 2>&1 | tail -10)"
     ]
   }
 }

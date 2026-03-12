@@ -10,10 +10,13 @@ export type PlayerTransaction = {
   amount: string;
   currency: string;
   methodName: string;
+  playerFirstName: string | null;
+  playerLastName: string | null;
   createdAt: Date;
 };
 
 export async function getPlayerTransactions(playerDbId: string): Promise<PlayerTransaction[]> {
+  const player = users;
   const rows = await db
     .select({
       id: transactions.id,
@@ -23,10 +26,13 @@ export async function getPlayerTransactions(playerDbId: string): Promise<PlayerT
       amount: transactions.amount,
       currency: transactions.currency,
       methodName: paymentMethods.name,
+      playerFirstName: player.firstName,
+      playerLastName: player.lastName,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .innerJoin(player, eq(transactions.playerId, player.id))
     .where(eq(transactions.playerId, playerDbId))
     .orderBy(desc(transactions.createdAt));
 
