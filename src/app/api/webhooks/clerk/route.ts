@@ -2,7 +2,6 @@ import { Webhook } from "svix";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 
 type ClerkUserCreatedData = {
   id: string;
@@ -43,45 +42,41 @@ export async function POST(request: Request) {
   if (evt.type === "user.created") {
     const { id: clerkId, email_addresses, first_name, last_name, image_url } = evt.data;
 
-    // If createUserAction already inserted this user (admin-created), skip entirely.
-    // The role and metadata are already correct — the webhook must not overwrite them.
-    const existing = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.clerkId, clerkId))
-      .limit(1);
-
-    if (existing.length > 0) {
-      return NextResponse.json({ success: true });
-    }
-
-    // Self-registered player: assign player role in Clerk metadata and insert into DB.
-    const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}/metadata`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ public_metadata: { role: "player" } }),
+    // Fetch the user's current metadata directly from Clerk.
+    // This is the source of truth — if createUserAction already set the role,
+    // it will be present here. No DB race condition involved.
+    const clerkUserRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
+      headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
     });
 
-    if (!metadataRes.ok) {
-      console.error("[webhook/clerk] Failed to assign player role to user:", clerkId);
-      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    let role: "admin" | "clerk" | "player" = "player";
+
+    if (clerkUserRes.ok) {
+      const clerkUser = await clerkUserRes.json();
+      const metaRole = clerkUser.public_metadata?.role;
+      if (metaRole === "admin" || metaRole === "clerk") {
+        role = metaRole;
+      }
+    } else {
+      console.error("[webhook/clerk] Failed to fetch user from Clerk:", clerkId);
     }
 
-    await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ skip_password_requirement: true }),
-    });
+    if (role === "player") {
+      // Self-registered player: set the role in Clerk metadata
+      await fetch(`https://api.clerk.com/v1/users/${clerkId}/metadata`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ public_metadata: { role: "player" } }),
+      });
+    }
 
+    // Sync to DB — onConflictDoNothing so createUserAction's insert always wins
     await db.insert(users).values({
       clerkId,
-      role: "player",
+      role,
       email: email_addresses[0]?.email_address ?? "",
       firstName: first_name ?? null,
       lastName: last_name ?? null,

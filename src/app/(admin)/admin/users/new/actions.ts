@@ -33,7 +33,7 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
 
   const { email, firstName, lastName, role } = parsed.data;
 
-  // Step 1: Create the user in Clerk
+  // Step 1: Create the user in Clerk (no metadata yet — set it explicitly below)
   const createRes = await fetch("https://api.clerk.com/v1/users", {
     method: "POST",
     headers: {
@@ -50,14 +50,15 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
 
   if (!createRes.ok) {
     const err = await createRes.json();
-    console.error("[createUserAction] Clerk create error:", JSON.stringify(err));
+    console.error("[createUserAction] Clerk create user error:", JSON.stringify(err));
     return { success: false, error: "Failed to create user. Please try again." };
   }
 
   const clerkUser = await createRes.json();
+  console.log(`[createUserAction] Created Clerk user ${clerkUser.id}, assigning role="${role}"`);
 
-  // Step 2: Explicitly PATCH the role in Clerk metadata.
-  // This is done as a separate call (not during creation) to guarantee it is applied.
+  // Step 2: PATCH the role into Clerk public_metadata.
+  // This must succeed before we insert into DB so the webhook GET also sees it.
   const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}/metadata`, {
     method: "PATCH",
     headers: {
@@ -68,8 +69,9 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
   });
 
   if (!metadataRes.ok) {
-    console.error("[createUserAction] Clerk metadata PATCH error:", await metadataRes.text());
-    // User was created but role not set — delete them to avoid orphan
+    const metaErr = await metadataRes.text();
+    console.error("[createUserAction] Clerk metadata PATCH failed:", metaErr);
+    // Clean up — delete the orphan user from Clerk
     await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
@@ -77,9 +79,12 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
     return { success: false, error: "Failed to assign role. Please try again." };
   }
 
+  const metaResult = await metadataRes.json();
+  console.log(`[createUserAction] Metadata PATCH result for ${clerkUser.id}:`, JSON.stringify(metaResult.public_metadata));
+
   // Step 3: Insert into DB with the correct role.
-  // The webhook will also fire for this user but uses onConflictDoNothing,
-  // so it becomes a safe no-op — this row always wins.
+  // The webhook will also fire but its GET to Clerk will see the role already set,
+  // and onConflictDoNothing ensures this insert wins if webhook fires first.
   const [adminRecord] = await db
     .select({ id: users.id })
     .from(users)
@@ -107,13 +112,13 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
       },
       body: JSON.stringify({
         redirect_url: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/sign-in`,
-        expires_in_seconds: 172800, // 48 hours
+        expires_in_seconds: 172800,
       }),
     }
   );
 
   if (!magicLinkRes.ok) {
-    console.warn("[createUserAction] Magic link email failed for:", clerkUser.id, await magicLinkRes.text());
+    console.warn("[createUserAction] Magic link failed for:", clerkUser.id, await magicLinkRes.text());
   }
 
   return { success: true };
