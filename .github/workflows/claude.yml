@@ -32,6 +32,4 @@ jobs:
       - name: Run Claude Code
         uses: anthropics/claude-code-action@beta
         with:
-          anthropic_api_key: ${{ secrets.ANTROPIC_CASHIER }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTROPIC_CASHIER }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
