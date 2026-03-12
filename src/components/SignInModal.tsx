@@ -63,7 +63,7 @@ export default function SignInModal() {
       }
       if (signIn!.status === "complete") {
         await setActive({ session: signIn!.createdSessionId });
-        router.push("/");
+        window.location.href = "/";
         handleClose();
       } else {
         setError("Verification incomplete. Please try again.");

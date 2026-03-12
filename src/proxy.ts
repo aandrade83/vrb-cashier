@@ -20,20 +20,17 @@ function homeForRole(role: string): string {
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
-  const role = sessionClaims?.metadata?.role;
 
-  // Authenticated user on "/" → send to their dashboard before public route check
-  if (userId && role && req.nextUrl.pathname === "/") {
-    return NextResponse.redirect(new URL(homeForRole(role), req.url));
-  }
-
+  // Public routes: let page.tsx handle redirect for authenticated users on "/"
   if (isPublicRoute(req)) return NextResponse.next();
 
   if (!userId) {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }
 
-  // Webhook may not have fired yet — redirect to pending page
+  // Role comes from the JWT — requires Clerk JWT template to include public_metadata
+  const role = (sessionClaims?.public_metadata as { role?: string } | undefined)?.role;
+
   if (!role) {
     return NextResponse.redirect(new URL("/pending", req.url));
   }
