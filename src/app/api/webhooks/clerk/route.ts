@@ -9,6 +9,7 @@ type ClerkUserCreatedData = {
   first_name: string | null;
   last_name: string | null;
   image_url: string | null;
+  username: string | null;
 };
 
 export async function POST(request: Request) {
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
   }
 
   if (evt.type === "user.created") {
-    const { id: clerkId, email_addresses, first_name, last_name, image_url } = evt.data;
+    const { id: clerkId, email_addresses, image_url, username } = evt.data;
 
     // Fetch the user's current metadata directly from Clerk.
     // This is the source of truth — if createUserAction already set the role,
@@ -78,8 +79,8 @@ export async function POST(request: Request) {
       clerkId,
       role,
       email: email_addresses[0]?.email_address ?? "",
-      firstName: first_name ?? null,
-      lastName: last_name ?? null,
+      firstName: username ?? null,
+      lastName: null,
       avatarUrl: image_url ?? null,
     }).onConflictDoNothing();
   }

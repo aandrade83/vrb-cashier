@@ -7,6 +7,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/pending",
   "/api/webhooks/(.*)",
+  "/api/register-player",
 ]);
 const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
 const isClerkRoute = createRouteMatcher(["/clerk(.*)"]);
