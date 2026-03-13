@@ -22,7 +22,7 @@ export default function SignUpPage() {
     setError("");
     setLoading(true);
     try {
-      await signUp!.create({ username, emailAddress: email, password });
+      await (signUp! as any).create({ username, emailAddress: email, password });
       await (signUp! as any).verifications.sendEmailCode();
       setPhase("verify");
     } catch (err: unknown) {
