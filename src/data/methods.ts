@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { paymentMethods, methodFields, auditLogs } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray, notInArray } from "drizzle-orm";
+import { transactionFieldValues } from "@/db/schema";
 import type { PaymentMethod, MethodField } from "@/db/schema";
 
 export type MethodWithFieldCount = PaymentMethod & { fieldCount: number };
@@ -8,6 +9,7 @@ export type MethodWithFieldCount = PaymentMethod & { fieldCount: number };
 export type MethodWithFields = PaymentMethod & { fields: MethodField[] };
 
 export type FieldInput = {
+  id?: string; // existing DB id — present for updates, absent for new fields
   label: string;
   placeholder?: string | null;
   fieldType: MethodField["fieldType"];
@@ -63,6 +65,27 @@ export async function getMethodWithFields(methodId: string): Promise<MethodWithF
     .orderBy(methodFields.displayOrder);
 
   return { ...method, fields };
+}
+
+export async function getAllActiveMethodsWithFields(): Promise<MethodWithFields[]> {
+  const methods = await db
+    .select()
+    .from(paymentMethods)
+    .where(and(eq(paymentMethods.isActive, true), eq(paymentMethods.isDeleted, false)))
+    .orderBy(paymentMethods.type, paymentMethods.createdAt);
+
+  if (methods.length === 0) return [];
+
+  const allFields = await db
+    .select()
+    .from(methodFields)
+    .where(inArray(methodFields.methodId, methods.map((m) => m.id)))
+    .orderBy(methodFields.methodId, methodFields.displayOrder);
+
+  return methods.map((m) => ({
+    ...m,
+    fields: allFields.filter((f) => f.methodId === m.id),
+  }));
 }
 
 export async function getMethodsForAdmin(
@@ -169,23 +192,56 @@ export async function updateMethod(
     })
     .where(eq(paymentMethods.id, id));
 
-  // Replace all fields: delete existing, re-insert
-  await db.delete(methodFields).where(eq(methodFields.methodId, id));
+  // Upsert fields: update existing, insert new, safely delete removed ones
+  const incomingIds = data.fields.map((f) => f.id).filter((fid): fid is string => !!fid);
 
-  if (data.fields.length > 0) {
-    await db.insert(methodFields).values(
-      data.fields.map((f) => ({
-        methodId: id,
-        label: f.label,
-        placeholder: f.placeholder ?? null,
-        fieldType: f.fieldType,
-        isRequired: f.isRequired,
-        displayOrder: f.displayOrder,
-        dropdownOptions: f.dropdownOptions ?? null,
-        fileConfig: f.fileConfig ?? null,
-        validationRules: f.validationRules ?? null,
-      }))
-    );
+  // Find existing field IDs for this method
+  const existingFields = await db
+    .select({ id: methodFields.id })
+    .from(methodFields)
+    .where(eq(methodFields.methodId, id));
+
+  const existingIds = existingFields.map((f) => f.id);
+
+  // IDs that were removed in the UI
+  const removedIds = existingIds.filter((eid) => !incomingIds.includes(eid));
+
+  // Only delete removed fields that have no transaction_field_values referencing them
+  if (removedIds.length > 0) {
+    const referenced = await db
+      .select({ methodFieldId: transactionFieldValues.methodFieldId })
+      .from(transactionFieldValues)
+      .where(inArray(transactionFieldValues.methodFieldId, removedIds));
+
+    const referencedIds = new Set(referenced.map((r) => r.methodFieldId));
+    const safeToDelete = removedIds.filter((rid) => !referencedIds.has(rid));
+
+    if (safeToDelete.length > 0) {
+      await db.delete(methodFields).where(inArray(methodFields.id, safeToDelete));
+    }
+  }
+
+  // Update existing fields and insert new ones
+  for (const f of data.fields) {
+    const fieldData = {
+      methodId: id,
+      label: f.label,
+      placeholder: f.placeholder ?? null,
+      fieldType: f.fieldType,
+      isRequired: f.isRequired,
+      displayOrder: f.displayOrder,
+      dropdownOptions: f.dropdownOptions ?? null,
+      fileConfig: f.fileConfig ?? null,
+      validationRules: f.validationRules ?? null,
+    };
+
+    if (f.id && existingIds.includes(f.id)) {
+      // Update existing field
+      await db.update(methodFields).set(fieldData).where(eq(methodFields.id, f.id));
+    } else {
+      // Insert new field
+      await db.insert(methodFields).values(fieldData);
+    }
   }
 
   await db.insert(auditLogs).values({

@@ -179,6 +179,7 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
       logoUrl: logoUrl || null,
       isActive,
       fields: fields.map((f) => ({
+        id: f.id,
         label: f.label,
         placeholder: f.placeholder || null,
         fieldType: f.fieldType,
