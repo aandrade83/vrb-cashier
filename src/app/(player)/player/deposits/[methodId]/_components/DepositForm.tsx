@@ -41,6 +41,24 @@ type FileConfig = {
   allowedExtensions?: string[];
 };
 
+function HiddenLabelField({ field }: { field: MethodField }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-sm text-primary underline underline-offset-2 hover:no-underline"
+      >
+        {field.label}
+      </button>
+      {open && (
+        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{field.placeholder}</p>
+      )}
+    </div>
+  );
+}
+
 export function DepositForm({ fields }: Props) {
   const router = useRouter();
   const idempotencyKey = useRef(crypto.randomUUID());
@@ -51,10 +69,8 @@ export function DepositForm({ fields }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Derive amount field: first number field whose label contains "amount" (case-insensitive)
-  const amountField = fields.find(
-    (f) => f.fieldType === "number" && f.label.toLowerCase().includes("amount")
-  );
+  // Derive amount field: first field whose label contains "amount" (case-insensitive)
+  const amountField = fields.find((f) => f.label.toLowerCase().includes("amount"));
 
   function setValue(fieldId: string, value: string) {
     setFieldValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -150,12 +166,14 @@ export function DepositForm({ fields }: Props) {
 
     const result = await submitDepositAction({
       methodId: fields[0]?.methodId ?? "",
-      fieldValues: fields.map((f) => ({
-        methodFieldId: f.id,
-        fieldLabelSnapshot: f.label,
-        fieldTypeSnapshot: f.fieldType,
-        value: fieldValues[f.id] ?? null,
-      })),
+      fieldValues: fields
+        .filter((f) => f.fieldType !== "label" && f.fieldType !== "hidden_label")
+        .map((f) => ({
+          methodFieldId: f.id,
+          fieldLabelSnapshot: f.label,
+          fieldTypeSnapshot: f.fieldType,
+          value: fieldValues[f.id] ?? null,
+        })),
       amount: amountValue,
       idempotencyKey: idempotencyKey.current,
       currency: "USD",
@@ -177,19 +195,33 @@ export function DepositForm({ fields }: Props) {
     <form onSubmit={handleSubmit} className="space-y-5">
       {fields.map((field) => (
         <div key={field.id} className="space-y-1">
+          {field.fieldType === "hidden_label" ? (
+            <HiddenLabelField field={field} />
+          ) : field.fieldType === "label" ? (
+            <p className="text-sm font-medium">{field.label}</p>
+          ) : (
+            <>
           <Label htmlFor={field.id}>
             {field.label}
             {field.isRequired && <span className="text-destructive ml-1">*</span>}
           </Label>
 
           {field.fieldType === "text" && (
-            <Input
-              id={field.id}
-              type="text"
-              placeholder={field.placeholder ?? undefined}
-              value={fieldValues[field.id] ?? ""}
-              onChange={(e) => setValue(field.id, e.target.value)}
-            />
+            <div className={field === amountField ? "relative" : undefined}>
+              {field === amountField && (
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                  $
+                </span>
+              )}
+              <Input
+                id={field.id}
+                type="text"
+                placeholder={field.placeholder ?? undefined}
+                value={fieldValues[field.id] ?? ""}
+                onChange={(e) => setValue(field.id, e.target.value)}
+                className={field === amountField ? "pl-6" : undefined}
+              />
+            </div>
           )}
 
           {field.fieldType === "textarea" && (
@@ -307,6 +339,8 @@ export function DepositForm({ fields }: Props) {
 
           {errors[field.id] && (
             <p className="text-sm text-destructive">{errors[field.id]}</p>
+          )}
+            </>
           )}
         </div>
       ))}

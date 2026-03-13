@@ -26,7 +26,9 @@ type FieldType =
   | "file"
   | "image"
   | "date"
-  | "checkbox";
+  | "checkbox"
+  | "label"
+  | "hidden_label";
 
 type FieldDef = {
   id: string;
@@ -49,6 +51,8 @@ const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   image: "Image Upload",
   date: "Date",
   checkbox: "Checkbox",
+  label: "Label",
+  hidden_label: "Hidden Label",
 };
 
 const EXTENSION_OPTIONS = ["jpg", "jpeg", "png", "pdf", "webp", "gif"];
@@ -329,27 +333,45 @@ export function CreateMethodForm() {
 
           {addingField ? (
             <div className="rounded border p-4 space-y-3 bg-muted/30">
-              <div className="grid grid-cols-2 gap-3">
+              <div className={`grid gap-3 ${draftField.fieldType === "label" ? "grid-cols-1" : "grid-cols-2"}`}>
                 <div className="space-y-1">
-                  <Label>Label *</Label>
+                  <Label>
+                    {draftField.fieldType === "hidden_label" ? "Toggle Label *" : "Label *"}
+                  </Label>
                   <Input
                     value={draftField.label}
                     onChange={(e) =>
                       setDraftField((prev) => ({ ...prev, label: e.target.value }))
                     }
-                    placeholder="e.g. Card Number"
+                    placeholder={draftField.fieldType === "hidden_label" ? 'e.g. "See more"' : "e.g. Card Number"}
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label>Placeholder</Label>
-                  <Input
-                    value={draftField.placeholder}
-                    onChange={(e) =>
-                      setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))
-                    }
-                    placeholder="Optional hint text"
-                  />
-                </div>
+                {draftField.fieldType !== "label" && (
+                  <div className="space-y-1">
+                    <Label>
+                      {draftField.fieldType === "hidden_label" ? "Content (shown when expanded)" : "Placeholder"}
+                    </Label>
+                    {draftField.fieldType === "hidden_label" ? (
+                      <textarea
+                        value={draftField.placeholder}
+                        onChange={(e) =>
+                          setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))
+                        }
+                        rows={8}
+                        placeholder="Enter the full text content that will be shown when expanded…"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+                      />
+                    ) : (
+                      <Input
+                        value={draftField.placeholder}
+                        onChange={(e) =>
+                          setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))
+                        }
+                        placeholder="Optional hint text"
+                      />
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -358,7 +380,11 @@ export function CreateMethodForm() {
                   <Select
                     value={draftField.fieldType}
                     onValueChange={(v) =>
-                      setDraftField((prev) => ({ ...prev, fieldType: v as FieldType }))
+                      setDraftField((prev) => ({
+                        ...prev,
+                        fieldType: v as FieldType,
+                        isRequired: (v === "label" || v === "hidden_label") ? false : prev.isRequired,
+                      }))
                     }
                   >
                     <SelectTrigger>
@@ -375,18 +401,20 @@ export function CreateMethodForm() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-center gap-2 pt-6">
-                  <input
-                    type="checkbox"
-                    id="isRequired"
-                    checked={draftField.isRequired}
-                    onChange={(e) =>
-                      setDraftField((prev) => ({ ...prev, isRequired: e.target.checked }))
-                    }
-                    className="h-4 w-4"
-                  />
-                  <Label htmlFor="isRequired">Required</Label>
-                </div>
+                {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label") && (
+                  <div className="flex items-center gap-2 pt-6">
+                    <input
+                      type="checkbox"
+                      id="isRequired"
+                      checked={draftField.isRequired}
+                      onChange={(e) =>
+                        setDraftField((prev) => ({ ...prev, isRequired: e.target.checked }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    <Label htmlFor="isRequired">Required</Label>
+                  </div>
+                )}
               </div>
 
               {/* Dropdown options */}
@@ -469,7 +497,7 @@ export function CreateMethodForm() {
               )}
 
               {/* Validation rules */}
-              <div>
+              {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label") && <div>
                 <button
                   type="button"
                   className="text-sm text-muted-foreground hover:text-foreground"
@@ -571,7 +599,7 @@ export function CreateMethodForm() {
                     )}
                   </div>
                 )}
-              </div>
+              </div>}
 
               <Separator />
               <div className="flex gap-2">

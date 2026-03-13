@@ -16,7 +16,7 @@ type ActionResult = { success: true; transactionId: string } | { success: false;
 const fieldValueSchema = z.object({
   methodFieldId: z.string().uuid(),
   fieldLabelSnapshot: z.string().min(1),
-  fieldTypeSnapshot: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox"]),
+  fieldTypeSnapshot: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label"]),
   value: z.string().nullable(),
 });
 

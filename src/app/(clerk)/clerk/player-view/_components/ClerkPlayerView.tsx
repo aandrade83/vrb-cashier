@@ -25,7 +25,7 @@ interface Props {
   payouts: MethodWithFields[];
 }
 
-export function PlayersView({ deposits, payouts }: Props) {
+export function ClerkPlayerView({ deposits, payouts }: Props) {
   const [type, setType] = useState<"deposit" | "payout">("deposit");
   const [selected, setSelected] = useState<MethodWithFields | null>(null);
 
@@ -35,9 +35,9 @@ export function PlayersView({ deposits, payouts }: Props) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Player View Preview</h1>
+          <h1 className="text-2xl font-semibold">Player View</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Click a card to preview exactly what players see.
+            Click a card to preview exactly what players see when submitting a deposit.
           </p>
         </div>
         <Select

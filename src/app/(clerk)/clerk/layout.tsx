@@ -4,6 +4,7 @@ import Link from "next/link";
 
 const navItems = [
   { label: "Queue", href: "/clerk/queue" },
+  { label: "Player View", href: "/clerk/player-view" },
   { label: "Reports", href: "/clerk/reports" },
 ];
 

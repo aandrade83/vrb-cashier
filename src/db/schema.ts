@@ -35,14 +35,16 @@ export const methodTypeEnum = pgEnum("method_type", [
 ]);
 
 export const fieldTypeEnum = pgEnum("field_type", [
-  "text",       // single-line textbox
-  "textarea",   // multi-line textbox
-  "number",     // numeric input
-  "dropdown",   // select with predefined options
-  "file",       // file upload (PDF, DOC, etc.)
-  "image",      // image upload (JPG, PNG, etc.)
-  "date",       // date picker
-  "checkbox",   // boolean toggle
+  "text",          // single-line textbox
+  "textarea",      // multi-line textbox
+  "number",        // numeric input
+  "dropdown",      // select with predefined options
+  "file",          // file upload (PDF, DOC, etc.)
+  "image",         // image upload (JPG, PNG, etc.)
+  "date",          // date picker
+  "checkbox",      // boolean toggle
+  "label",         // static display text, no user input
+  "hidden_label",  // collapsible content block, toggle shows placeholder text
 ]);
 
 export const transactionStatusEnum = pgEnum("transaction_status", [
