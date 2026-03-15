@@ -56,16 +56,21 @@ export function PlayersView({ deposits, payouts }: Props) {
 
       {methods.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8">
-          No active {type} methods.
+          No {type} methods found.
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {methods.map((method) => (
             <Card
               key={method.id}
-              className="cursor-pointer hover:bg-muted/50 transition-colors"
+              className="relative cursor-pointer hover:bg-muted/50 transition-colors"
               onClick={() => setSelected(method)}
             >
+              {!method.isActive && (
+                <span className="absolute top-2 right-2 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-orange-500 text-white z-10">
+                  Disabled
+                </span>
+              )}
               <CardContent className="flex flex-col items-center gap-3 p-6">
                 {method.logoUrl ? (
                   <Image
@@ -91,7 +96,7 @@ export function PlayersView({ deposits, payouts }: Props) {
       )}
 
       <Sheet open={selected !== null} onOpenChange={(open) => { if (!open) setSelected(null); }}>
-        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent side="left" className="w-full sm:max-w-lg overflow-y-auto">
           {selected && (
             <>
               <SheetHeader className="pb-2">
