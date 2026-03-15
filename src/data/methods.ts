@@ -43,6 +43,20 @@ export async function getActiveDepositMethods(): Promise<PaymentMethod[]> {
     .orderBy(paymentMethods.createdAt);
 }
 
+export async function getActivePayoutMethods(): Promise<PaymentMethod[]> {
+  return db
+    .select()
+    .from(paymentMethods)
+    .where(
+      and(
+        eq(paymentMethods.type, "payout"),
+        eq(paymentMethods.isActive, true),
+        eq(paymentMethods.isDeleted, false)
+      )
+    )
+    .orderBy(paymentMethods.createdAt);
+}
+
 export async function getMethodWithFields(methodId: string): Promise<MethodWithFields | null> {
   const [method] = await db
     .select()

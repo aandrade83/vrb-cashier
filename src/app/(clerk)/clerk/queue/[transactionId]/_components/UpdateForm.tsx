@@ -71,6 +71,7 @@ export function UpdateForm({ transactionId, ownsLock }: Props) {
             <SelectValue placeholder="Select a status…" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="in_progress">In Progress</SelectItem>
             <SelectItem value="approved">Approved</SelectItem>
             <SelectItem value="rejected">Rejected</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
