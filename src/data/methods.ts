@@ -67,6 +67,27 @@ export async function getMethodWithFields(methodId: string): Promise<MethodWithF
   return { ...method, fields };
 }
 
+export async function getAllMethodsWithFields(): Promise<MethodWithFields[]> {
+  const methods = await db
+    .select()
+    .from(paymentMethods)
+    .where(eq(paymentMethods.isDeleted, false))
+    .orderBy(paymentMethods.type, paymentMethods.createdAt);
+
+  if (methods.length === 0) return [];
+
+  const allFields = await db
+    .select()
+    .from(methodFields)
+    .where(inArray(methodFields.methodId, methods.map((m) => m.id)))
+    .orderBy(methodFields.methodId, methodFields.displayOrder);
+
+  return methods.map((m) => ({
+    ...m,
+    fields: allFields.filter((f) => f.methodId === m.id),
+  }));
+}
+
 export async function getAllActiveMethodsWithFields(): Promise<MethodWithFields[]> {
   const methods = await db
     .select()
