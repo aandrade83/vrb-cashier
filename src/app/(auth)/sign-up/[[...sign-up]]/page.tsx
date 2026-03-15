@@ -1,19 +1,21 @@
 "use client";
 
-import { useSignUp, useClerk } from "@clerk/nextjs";
+import { useSignUp, useClerk, useSession } from "@clerk/nextjs";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Phase = "form" | "verify";
 
 export default function SignUpPage() {
   const { signUp } = useSignUp();
   const { setActive } = useClerk();
+  const { session } = useSession();
+  const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>("form");
   const [loading, setLoading] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
 
@@ -22,7 +24,7 @@ export default function SignUpPage() {
     setError("");
     setLoading(true);
     try {
-      await (signUp! as any).create({ username, emailAddress: email, password });
+      await (signUp! as any).create({ username, emailAddress: email });
       await (signUp! as any).verifications.sendEmailCode();
       setPhase("verify");
     } catch (err: unknown) {
@@ -42,6 +44,14 @@ export default function SignUpPage() {
       if (signUp!.status === "complete") {
         await setActive({ session: signUp!.createdSessionId });
         await fetch("/api/register-player", { method: "POST" });
+        // Wait for the JWT to refresh with the new role before navigating.
+        // Without this, middleware sees role=undefined and redirects to /pending.
+        for (let i = 0; i < 10; i++) {
+          await session?.reload();
+          const role = (session?.lastActiveToken?.jwt?.claims as any)?.public_metadata?.role;
+          if (role) break;
+          await new Promise((r) => setTimeout(r, 500));
+        }
         window.location.href = "/player/deposits";
       } else {
         setError("Verification incomplete. Please try again.");
@@ -56,7 +66,17 @@ export default function SignUpPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-4">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm mx-4 relative">
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+          aria-label="Close"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
         <h2 className="text-lg font-semibold mb-4">Create Account</h2>
 
         {phase === "form" ? (
@@ -77,16 +97,6 @@ export default function SignUpPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              required
-              disabled={loading}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black"
-            />
-            <label className="text-sm font-medium text-gray-700">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
               required
               disabled={loading}
               className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black"

@@ -13,7 +13,7 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getClerkByClerkId } from "@/data/queue";
-import { sendStatusUpdateEmail } from "@/lib/email/sendStatusUpdate";
+// import { sendStatusUpdateEmail } from "@/lib/email/sendStatusUpdate"; // TODO: re-enable when email provider is configured
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -174,7 +174,7 @@ export async function renewLockAction(transactionId: string): Promise<ActionResu
 
 const updateSchema = z.object({
   transactionId: z.string().uuid(),
-  newStatus: z.enum(["approved", "rejected", "completed"]),
+  newStatus: z.enum(["in_progress", "approved", "rejected", "completed"]),
   noteToPlayer: z.string().min(10, "Note to player must be at least 10 characters"),
   internalNote: z.string().optional(),
 });
@@ -253,39 +253,37 @@ export async function updateTransactionStatusAction(
     })
     .returning({ id: transactionUpdates.id });
 
-  // Get player email for notification
+  // Get player for in-app notification
   const [player] = await db
     .select({ id: users.id, email: users.email, firstName: users.firstName })
     .from(users)
     .where(eq(users.id, tx.playerId))
     .limit(1);
 
-  // Send email — non-blocking
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://localhost:3000";
-  const emailResult = await sendStatusUpdateEmail({
-    playerEmail: player.email,
-    playerFirstName: player.firstName,
-    referenceCode: tx.referenceCode,
-    type: tx.type,
-    amount: tx.amount,
-    currency: tx.currency,
-    newStatus,
-    noteToPlayer,
-    appUrl,
-  });
-
-  // Update email tracking
-  if (emailResult.success) {
-    await db
-      .update(transactionUpdates)
-      .set({ emailSentToPlayer: true, emailSentAt: now })
-      .where(eq(transactionUpdates.id, update.id));
-  } else {
-    await db
-      .update(transactionUpdates)
-      .set({ emailError: emailResult.error })
-      .where(eq(transactionUpdates.id, update.id));
-  }
+  // TODO: Send email notification to player when email provider is configured
+  // const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  // const emailResult = await sendStatusUpdateEmail({
+  //   playerEmail: player.email,
+  //   playerFirstName: player.firstName,
+  //   referenceCode: tx.referenceCode,
+  //   type: tx.type,
+  //   amount: tx.amount,
+  //   currency: tx.currency,
+  //   newStatus,
+  //   noteToPlayer,
+  //   appUrl,
+  // });
+  // if (emailResult.success) {
+  //   await db
+  //     .update(transactionUpdates)
+  //     .set({ emailSentToPlayer: true, emailSentAt: now })
+  //     .where(eq(transactionUpdates.id, update.id));
+  // } else {
+  //   await db
+  //     .update(transactionUpdates)
+  //     .set({ emailError: emailResult.error })
+  //     .where(eq(transactionUpdates.id, update.id));
+  // }
 
   // Insert in-app notification for player
   await db.insert(notifications).values({
