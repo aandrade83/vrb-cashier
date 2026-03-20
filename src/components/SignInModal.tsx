@@ -18,6 +18,7 @@ export default function SignInModal() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const isDev = process.env.NODE_ENV === "development";
 
   function handleClose() {
     setOpen(false);
@@ -43,6 +44,7 @@ export default function SignInModal() {
         setError(sendError.message ?? "Could not send code.");
         return;
       }
+      if (isDev && email.includes("+clerk_test")) setCode("424242");
       setPhase("code");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -106,6 +108,11 @@ export default function SignInModal() {
                   disabled={loading}
                   className="border border-gray-300 rounded-md px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black"
                 />
+                {isDev && (
+                  <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                    This is a Developer test Mode. Security will be turned on in production environment.
+                  </div>
+                )}
                 {error && <p className="text-red-500 text-xs">{error}</p>}
                 <button
                   type="submit"
