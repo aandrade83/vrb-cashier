@@ -19,7 +19,7 @@ const fieldSchema = z.object({
   id: z.string().uuid().optional(),
   label: z.string().min(1),
   placeholder: z.string().optional().nullable(),
-  fieldType: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label"]),
+  fieldType: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label", "random_list"]),
   isRequired: z.boolean(),
   displayOrder: z.number().int().min(0),
   dropdownOptions: z.array(z.string()).optional().nullable(),

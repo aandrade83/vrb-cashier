@@ -69,6 +69,20 @@ export function DepositForm({ fields }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  // Pick and lock one random value per random_list field on mount
+  const [randomSelections] = useState<Record<string, string>>(() => {
+    const selections: Record<string, string> = {};
+    for (const field of fields) {
+      if (field.fieldType === "random_list") {
+        const options = field.dropdownOptions as string[] | null ?? [];
+        if (options.length > 0) {
+          selections[field.id] = options[Math.floor(Math.random() * options.length)];
+        }
+      }
+    }
+    return selections;
+  });
+
   // Derive amount field: first field whose label contains "amount" (case-insensitive)
   const amountField = fields.find((f) => f.label.toLowerCase().includes("amount"));
 
@@ -118,6 +132,7 @@ export function DepositForm({ fields }: Props) {
     const newErrors: Record<string, string> = {};
 
     for (const field of fields) {
+      if (field.fieldType === "random_list" || field.fieldType === "label" || field.fieldType === "hidden_label") continue;
       const value = fieldValues[field.id] ?? "";
       const vr = field.validationRules as ValidationRules | null;
 
@@ -172,7 +187,7 @@ export function DepositForm({ fields }: Props) {
           methodFieldId: f.id,
           fieldLabelSnapshot: f.label,
           fieldTypeSnapshot: f.fieldType,
-          value: fieldValues[f.id] ?? null,
+          value: f.fieldType === "random_list" ? (randomSelections[f.id] ?? null) : (fieldValues[f.id] ?? null),
         })),
       amount: amountValue,
       idempotencyKey: idempotencyKey.current,
@@ -199,6 +214,13 @@ export function DepositForm({ fields }: Props) {
             <HiddenLabelField field={field} />
           ) : field.fieldType === "label" ? (
             <p className="text-sm font-medium">{field.label}</p>
+          ) : field.fieldType === "random_list" ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{field.label}</p>
+              <p className="text-sm font-mono bg-muted rounded px-3 py-2 select-all break-all">
+                {randomSelections[field.id] ?? "—"}
+              </p>
+            </div>
           ) : (
             <>
           <Label htmlFor={field.id}>
