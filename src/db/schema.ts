@@ -45,6 +45,7 @@ export const fieldTypeEnum = pgEnum("field_type", [
   "checkbox",      // boolean toggle
   "label",         // static display text, no user input
   "hidden_label",  // collapsible content block, toggle shows placeholder text
+  "random_list",   // shows a random value from dropdownOptions on each form load
 ]);
 
 export const transactionStatusEnum = pgEnum("transaction_status", [

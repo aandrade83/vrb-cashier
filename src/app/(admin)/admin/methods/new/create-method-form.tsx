@@ -28,7 +28,8 @@ type FieldType =
   | "date"
   | "checkbox"
   | "label"
-  | "hidden_label";
+  | "hidden_label"
+  | "random_list";
 
 type FieldDef = {
   id: string;
@@ -53,6 +54,7 @@ const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   checkbox: "Checkbox",
   label: "Label",
   hidden_label: "Hidden Label",
+  random_list: "Random List",
 };
 
 const EXTENSION_OPTIONS = ["jpg", "jpeg", "png", "pdf", "webp", "gif"];
@@ -383,7 +385,7 @@ export function CreateMethodForm() {
                       setDraftField((prev) => ({
                         ...prev,
                         fieldType: v as FieldType,
-                        isRequired: (v === "label" || v === "hidden_label") ? false : prev.isRequired,
+                        isRequired: (v === "label" || v === "hidden_label" || v === "random_list") ? false : prev.isRequired,
                       }))
                     }
                   >
@@ -401,7 +403,7 @@ export function CreateMethodForm() {
                     </SelectContent>
                   </Select>
                 </div>
-                {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label") && (
+                {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label" || draftField.fieldType === "random_list") && (
                   <div className="flex items-center gap-2 pt-6">
                     <input
                       type="checkbox"
@@ -416,6 +418,46 @@ export function CreateMethodForm() {
                   </div>
                 )}
               </div>
+
+              {/* Random list values */}
+              {draftField.fieldType === "random_list" && (
+                <div className="space-y-2">
+                  <Label>List Values</Label>
+                  <p className="text-xs text-muted-foreground">
+                    One will be picked at random each time a player opens this form.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newOption}
+                      onChange={(e) => setNewOption(e.target.value)}
+                      placeholder="Add value (e.g. Bitcoin address)"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addDropdownOption();
+                        }
+                      }}
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={addDropdownOption}>
+                      Add
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {draftField.dropdownOptions.map((opt) => (
+                      <Badge key={opt} variant="secondary" className="gap-1 font-mono text-xs">
+                        {opt}
+                        <button
+                          type="button"
+                          onClick={() => removeDropdownOption(opt)}
+                          className="text-xs hover:text-destructive"
+                        >
+                          ✕
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Dropdown options */}
               {draftField.fieldType === "dropdown" && (
@@ -497,7 +539,7 @@ export function CreateMethodForm() {
               )}
 
               {/* Validation rules */}
-              {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label") && <div>
+              {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label" || draftField.fieldType === "random_list") && <div>
                 <button
                   type="button"
                   className="text-sm text-muted-foreground hover:text-foreground"

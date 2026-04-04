@@ -47,6 +47,19 @@ export function MethodDepositPreview({ method }: Props) {
     f.label.toLowerCase().includes("amount")
   );
 
+  const [randomSelections] = useState<Record<string, string>>(() => {
+    const selections: Record<string, string> = {};
+    for (const field of method.fields) {
+      if (field.fieldType === "random_list") {
+        const options = field.dropdownOptions as string[] | null ?? [];
+        if (options.length > 0) {
+          selections[field.id] = options[Math.floor(Math.random() * options.length)];
+        }
+      }
+    }
+    return selections;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header — same as player deposit page */}
@@ -81,6 +94,13 @@ export function MethodDepositPreview({ method }: Props) {
               <HiddenLabelField field={field} />
             ) : field.fieldType === "label" ? (
               <p className="text-sm font-medium">{field.label}</p>
+            ) : field.fieldType === "random_list" ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{field.label}</p>
+                <p className="text-sm font-mono bg-muted rounded px-3 py-2 select-all break-all">
+                  {randomSelections[field.id] ?? "—"}
+                </p>
+              </div>
             ) : (
               <>
                 <Label htmlFor={`preview-${field.id}`}>
