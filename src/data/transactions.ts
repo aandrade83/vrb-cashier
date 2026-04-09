@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { transactions, users, paymentMethods } from "@/db/schema";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, count, desc, and } from "drizzle-orm";
 
 export type PlayerTransaction = {
   id: string;
@@ -15,7 +15,10 @@ export type PlayerTransaction = {
   createdAt: Date;
 };
 
-export async function getPlayerTransactions(playerDbId: string): Promise<PlayerTransaction[]> {
+export async function getPlayerTransactions(
+  playerDbId: string,
+  cashierId: string
+): Promise<PlayerTransaction[]> {
   const player = users;
   const rows = await db
     .select({
@@ -33,34 +36,45 @@ export async function getPlayerTransactions(playerDbId: string): Promise<PlayerT
     .from(transactions)
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .innerJoin(player, eq(transactions.playerId, player.id))
-    .where(eq(transactions.playerId, playerDbId))
+    .where(
+      and(
+        eq(transactions.playerId, playerDbId),
+        eq(transactions.cashierId, cashierId)
+      )
+    )
     .orderBy(desc(transactions.createdAt));
 
   return rows;
 }
 
-export async function findTransactionByIdempotencyKey(key: string) {
+export async function findTransactionByIdempotencyKey(key: string, cashierId: string) {
   const [row] = await db
     .select({ id: transactions.id, referenceCode: transactions.referenceCode })
     .from(transactions)
-    .where(eq(transactions.idempotencyKey, key))
+    .where(and(eq(transactions.idempotencyKey, key), eq(transactions.cashierId, cashierId)))
     .limit(1);
   return row ?? null;
 }
 
-export async function getNextTransactionSequence(type: "deposit" | "payout"): Promise<number> {
+export async function getNextTransactionSequence(
+  type: "deposit" | "payout",
+  cashierId: string
+): Promise<number> {
   const [result] = await db
     .select({ total: count() })
     .from(transactions)
-    .where(eq(transactions.type, type));
+    .where(and(eq(transactions.type, type), eq(transactions.cashierId, cashierId)));
   return (result?.total ?? 0) + 1;
 }
 
-export async function getPlayerByClerkId(clerkId: string): Promise<{ id: string } | null> {
+export async function getPlayerByClerkId(
+  clerkId: string,
+  cashierId: string
+): Promise<{ id: string } | null> {
   const [row] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.clerkId, clerkId))
+    .where(and(eq(users.clerkId, clerkId), eq(users.cashierId, cashierId)))
     .limit(1);
   return row ?? null;
 }

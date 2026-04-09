@@ -11,7 +11,8 @@ import {
 } from "@/data/methods";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { getCashierId } from "@/lib/cashier-context";
 
 type ActionResult = { success: true; methodId?: string } | { success: false; error: string };
 
@@ -19,7 +20,7 @@ const fieldSchema = z.object({
   id: z.string().uuid().optional(),
   label: z.string().min(1),
   placeholder: z.string().optional().nullable(),
-  fieldType: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label", "random_list"]),
+  fieldType: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label", "random_list", "amount_list", "hyperlink"]),
   isRequired: z.boolean(),
   displayOrder: z.number().int().min(0),
   dropdownOptions: z.array(z.string()).optional().nullable(),
@@ -48,7 +49,7 @@ const methodSchema = z.object({
   fields: z.array(fieldSchema),
 });
 
-async function requireAdmin(): Promise<{ adminDbId: string } | { error: string }> {
+async function requireAdmin(cashierId: string): Promise<{ adminDbId: string } | { error: string }> {
   const { sessionClaims, userId } = await auth();
   if (sessionClaims?.public_metadata?.role !== "admin" || !userId) {
     return { error: "Unauthorized" };
@@ -57,7 +58,7 @@ async function requireAdmin(): Promise<{ adminDbId: string } | { error: string }
   const [adminRecord] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.clerkId, userId))
+    .where(and(eq(users.clerkId, userId), eq(users.cashierId, cashierId)))
     .limit(1);
 
   if (!adminRecord) return { error: "Admin record not found" };
@@ -65,8 +66,9 @@ async function requireAdmin(): Promise<{ adminDbId: string } | { error: string }
 }
 
 export async function createMethodAction(data: unknown): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if ("error" in auth) return { success: false, error: auth.error };
+  const cashierId = await getCashierId();
+  const adminAuth = await requireAdmin(cashierId);
+  if ("error" in adminAuth) return { success: false, error: adminAuth.error };
 
   const parsed = methodSchema.safeParse(data);
   if (!parsed.success) {
@@ -78,7 +80,8 @@ export async function createMethodAction(data: unknown): Promise<ActionResult> {
       ...parsed.data,
       logoUrl: parsed.data.logoUrl || null,
     },
-    auth.adminDbId
+    adminAuth.adminDbId,
+    cashierId
   );
 
   revalidatePath("/admin/methods");
@@ -86,10 +89,11 @@ export async function createMethodAction(data: unknown): Promise<ActionResult> {
 }
 
 export async function updateMethodAction(id: string, data: unknown): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if ("error" in auth) return { success: false, error: auth.error };
+  const cashierId = await getCashierId();
+  const adminAuth = await requireAdmin(cashierId);
+  if ("error" in adminAuth) return { success: false, error: adminAuth.error };
 
-  const existing = await getMethodById(id);
+  const existing = await getMethodById(id, cashierId);
   if (!existing) return { success: false, error: "Method not found" };
 
   const parsed = methodSchema.safeParse(data);
@@ -103,7 +107,8 @@ export async function updateMethodAction(id: string, data: unknown): Promise<Act
       ...parsed.data,
       logoUrl: parsed.data.logoUrl || null,
     },
-    auth.adminDbId
+    adminAuth.adminDbId,
+    cashierId
   );
 
   revalidatePath("/admin/methods");
@@ -111,12 +116,13 @@ export async function updateMethodAction(id: string, data: unknown): Promise<Act
 }
 
 export async function toggleMethodActiveAction(data: { id: string }): Promise<ActionResult> {
-  const auth = await requireAdmin();
-  if ("error" in auth) return { success: false, error: auth.error };
+  const cashierId = await getCashierId();
+  const adminAuth = await requireAdmin(cashierId);
+  if ("error" in adminAuth) return { success: false, error: adminAuth.error };
 
   if (!data.id) return { success: false, error: "Missing method ID" };
 
-  await toggleMethodActive(data.id, auth.adminDbId);
+  await toggleMethodActive(data.id, adminAuth.adminDbId, cashierId);
   revalidatePath("/admin/methods");
   return { success: true };
 }

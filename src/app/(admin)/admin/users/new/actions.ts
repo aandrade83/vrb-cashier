@@ -4,7 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { getCashierId } from "@/lib/cashier-context";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -26,6 +27,8 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
     return { success: false, error: "Unauthorized" };
   }
 
+  const cashierId = await getCashierId();
+
   const parsed = createUserSchema.safeParse(data);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
@@ -33,7 +36,7 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
 
   const { email, firstName, lastName, role } = parsed.data;
 
-  // Step 1: Create the user in Clerk (no metadata yet — set it explicitly below)
+  // Step 1: Create the user in Clerk
   const createRes = await fetch("https://api.clerk.com/v1/users", {
     method: "POST",
     headers: {
@@ -54,24 +57,22 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
     return { success: false, error: "Failed to create user. Please try again." };
   }
 
-  const clerkUser = await createRes.json();
+  const clerkUser = await createRes.json() as { id: string };
   console.log(`[createUserAction] Created Clerk user ${clerkUser.id}, assigning role="${role}"`);
 
-  // Step 2: PATCH the role into Clerk public_metadata.
-  // This must succeed before we insert into DB so the webhook GET also sees it.
+  // Step 2: PATCH the role + cashierId into Clerk public_metadata
   const metadataRes = await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}/metadata`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ public_metadata: { role } }),
+    body: JSON.stringify({ public_metadata: { role, cashierId } }),
   });
 
   if (!metadataRes.ok) {
     const metaErr = await metadataRes.text();
     console.error("[createUserAction] Clerk metadata PATCH failed:", metaErr);
-    // Clean up — delete the orphan user from Clerk
     await fetch(`https://api.clerk.com/v1/users/${clerkUser.id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
@@ -79,20 +80,19 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
     return { success: false, error: "Failed to assign role. Please try again." };
   }
 
-  const metaResult = await metadataRes.json();
+  const metaResult = await metadataRes.json() as { public_metadata?: unknown };
   console.log(`[createUserAction] Metadata PATCH result for ${clerkUser.id}:`, JSON.stringify(metaResult.public_metadata));
 
-  // Step 3: Insert into DB with the correct role.
-  // The webhook will also fire but its GET to Clerk will see the role already set,
-  // and onConflictDoNothing ensures this insert wins if webhook fires first.
+  // Step 3: Insert into DB with cashierId
   const [adminRecord] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.clerkId, adminClerkId!))
+    .where(and(eq(users.clerkId, adminClerkId!), eq(users.cashierId, cashierId)))
     .limit(1);
 
   await db.insert(users).values({
     clerkId: clerkUser.id,
+    cashierId,
     role,
     email,
     firstName,
@@ -101,7 +101,7 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
     createdByAdminId: adminRecord?.id ?? null,
   }).onConflictDoNothing();
 
-  // Step 4: Send magic link so the new user can log in without a password
+  // Step 4: Send magic link
   const magicLinkRes = await fetch(
     `https://api.clerk.com/v1/users/${clerkUser.id}/magic_links`,
     {

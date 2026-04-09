@@ -11,9 +11,9 @@ import {
   auditLogs,
   users,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { getClerkByClerkId } from "@/data/queue";
-// import { sendStatusUpdateEmail } from "@/lib/email/sendStatusUpdate"; // TODO: re-enable when email provider is configured
+import { getCashierId } from "@/lib/cashier-context";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -21,25 +21,24 @@ type LockResult =
   | { acquired: true; lockedByClerkId: string }
   | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
 
-async function requireClerk() {
+async function requireClerk(cashierId: string) {
   const { sessionClaims, userId } = await auth();
   if (sessionClaims?.public_metadata?.role !== "clerk" || !userId) return null;
-  return userId;
+  const clerk = await getClerkByClerkId(userId, cashierId);
+  return clerk;
 }
 
 // ─── Lock ─────────────────────────────────────────────────────────────────────
 
 export async function lockTransactionAction(transactionId: string): Promise<LockResult> {
-  const clerkAuthId = await requireClerk();
-  if (!clerkAuthId) return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
-
-  const clerk = await getClerkByClerkId(clerkAuthId);
+  const cashierId = await getCashierId();
+  const clerk = await requireClerk(cashierId);
   if (!clerk) return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
 
   const [tx] = await db
     .select({ lockedByClerkId: transactions.lockedByClerkId, lockExpiresAt: transactions.lockExpiresAt, status: transactions.status })
     .from(transactions)
-    .where(eq(transactions.id, transactionId))
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
     .limit(1);
 
   if (!tx) return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
@@ -60,10 +59,11 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
         ...(tx.status === "pending" ? { status: "in_progress" } : {}),
         updatedAt: now,
       })
-      .where(eq(transactions.id, transactionId));
+      .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
 
     if (isFree && !isOwnLock) {
       await db.insert(auditLogs).values({
+        cashierId,
         actorUserId: clerk.id,
         action: "transaction.locked",
         entityType: "transaction",
@@ -75,7 +75,6 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
     return { acquired: true, lockedByClerkId: clerk.id };
   }
 
-  // Locked by a different clerk — fetch their info
   const [lockHolder] = await db
     .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
     .from(users)
@@ -102,16 +101,14 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
 // ─── Take Over ────────────────────────────────────────────────────────────────
 
 export async function takeOverTransactionAction(transactionId: string): Promise<ActionResult> {
-  const clerkAuthId = await requireClerk();
-  if (!clerkAuthId) return { success: false, error: "Unauthorized" };
-
-  const clerk = await getClerkByClerkId(clerkAuthId);
-  if (!clerk) return { success: false, error: "Clerk account not found" };
+  const cashierId = await getCashierId();
+  const clerk = await requireClerk(cashierId);
+  if (!clerk) return { success: false, error: "Unauthorized" };
 
   const [tx] = await db
     .select({ lockedByClerkId: transactions.lockedByClerkId })
     .from(transactions)
-    .where(eq(transactions.id, transactionId))
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
     .limit(1);
 
   const now = new Date();
@@ -126,9 +123,10 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
       status: "in_progress",
       updatedAt: now,
     })
-    .where(eq(transactions.id, transactionId));
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
 
   await db.insert(auditLogs).values({
+    cashierId,
     actorUserId: clerk.id,
     action: "transaction.taken_over",
     entityType: "transaction",
@@ -147,16 +145,14 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
 // ─── Renew Lock ───────────────────────────────────────────────────────────────
 
 export async function renewLockAction(transactionId: string): Promise<ActionResult> {
-  const clerkAuthId = await requireClerk();
-  if (!clerkAuthId) return { success: false, error: "Unauthorized" };
-
-  const clerk = await getClerkByClerkId(clerkAuthId);
-  if (!clerk) return { success: false, error: "Clerk account not found" };
+  const cashierId = await getCashierId();
+  const clerk = await requireClerk(cashierId);
+  if (!clerk) return { success: false, error: "Unauthorized" };
 
   const [tx] = await db
     .select({ lockedByClerkId: transactions.lockedByClerkId })
     .from(transactions)
-    .where(eq(transactions.id, transactionId))
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
     .limit(1);
 
   if (tx?.lockedByClerkId !== clerk.id) return { success: false, error: "You do not own this lock" };
@@ -165,7 +161,7 @@ export async function renewLockAction(transactionId: string): Promise<ActionResu
   await db
     .update(transactions)
     .set({ lockExpiresAt: expiresAt })
-    .where(eq(transactions.id, transactionId));
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
 
   return { success: true };
 }
@@ -184,18 +180,15 @@ const TERMINAL_STATUSES = ["completed", "rejected"];
 export async function updateTransactionStatusAction(
   input: unknown
 ): Promise<ActionResult> {
-  const clerkAuthId = await requireClerk();
-  if (!clerkAuthId) return { success: false, error: "Unauthorized" };
-
-  const clerk = await getClerkByClerkId(clerkAuthId);
-  if (!clerk) return { success: false, error: "Clerk account not found" };
+  const cashierId = await getCashierId();
+  const clerk = await requireClerk(cashierId);
+  if (!clerk) return { success: false, error: "Unauthorized" };
 
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
   const { transactionId, newStatus, noteToPlayer, internalNote } = parsed.data;
 
-  // Fetch current transaction state
   const [tx] = await db
     .select({
       lockedByClerkId: transactions.lockedByClerkId,
@@ -208,17 +201,15 @@ export async function updateTransactionStatusAction(
       methodId: transactions.methodId,
     })
     .from(transactions)
-    .where(eq(transactions.id, transactionId))
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
     .limit(1);
 
   if (!tx) return { success: false, error: "Transaction not found" };
 
-  // Verify lock ownership
   if (tx.lockedByClerkId !== clerk.id) {
     return { success: false, error: "You do not own the lock on this transaction." };
   }
 
-  // Verify not terminal
   if (TERMINAL_STATUSES.includes(tx.status)) {
     return { success: false, error: "This transaction has already been finalized and cannot be updated." };
   }
@@ -226,7 +217,6 @@ export async function updateTransactionStatusAction(
   const previousStatus = tx.status;
   const now = new Date();
 
-  // Update transaction — release lock
   await db
     .update(transactions)
     .set({
@@ -237,12 +227,12 @@ export async function updateTransactionStatusAction(
       lockExpiresAt: null,
       updatedAt: now,
     })
-    .where(eq(transactions.id, transactionId));
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
 
-  // Insert transaction_updates row
   const [update] = await db
     .insert(transactionUpdates)
     .values({
+      cashierId,
       transactionId,
       updatedByUserId: clerk.id,
       previousStatus: previousStatus as "pending" | "in_progress" | "approved" | "rejected" | "completed" | "cancelled",
@@ -253,40 +243,14 @@ export async function updateTransactionStatusAction(
     })
     .returning({ id: transactionUpdates.id });
 
-  // Get player for in-app notification
   const [player] = await db
     .select({ id: users.id, email: users.email, firstName: users.firstName })
     .from(users)
     .where(eq(users.id, tx.playerId))
     .limit(1);
 
-  // TODO: Send email notification to player when email provider is configured
-  // const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  // const emailResult = await sendStatusUpdateEmail({
-  //   playerEmail: player.email,
-  //   playerFirstName: player.firstName,
-  //   referenceCode: tx.referenceCode,
-  //   type: tx.type,
-  //   amount: tx.amount,
-  //   currency: tx.currency,
-  //   newStatus,
-  //   noteToPlayer,
-  //   appUrl,
-  // });
-  // if (emailResult.success) {
-  //   await db
-  //     .update(transactionUpdates)
-  //     .set({ emailSentToPlayer: true, emailSentAt: now })
-  //     .where(eq(transactionUpdates.id, update.id));
-  // } else {
-  //   await db
-  //     .update(transactionUpdates)
-  //     .set({ emailError: emailResult.error })
-  //     .where(eq(transactionUpdates.id, update.id));
-  // }
-
-  // Insert in-app notification for player
   await db.insert(notifications).values({
+    cashierId,
     userId: player.id,
     transactionId,
     transactionUpdateId: update.id,
@@ -295,8 +259,8 @@ export async function updateTransactionStatusAction(
     body: noteToPlayer,
   });
 
-  // Audit log
   await db.insert(auditLogs).values({
+    cashierId,
     actorUserId: clerk.id,
     actorRole: "clerk",
     action: "transaction.status_updated",

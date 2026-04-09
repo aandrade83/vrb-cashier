@@ -15,6 +15,7 @@ import {
   getPendingTransactions,
   getCompletedTransactions,
 } from "@/data/queue";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
@@ -33,9 +34,9 @@ export default async function AdminClerksPage() {
   }
 
   const [pending, completedDeposits, completedPayouts] = await Promise.all([
-    getPendingTransactions(),
-    getCompletedTransactions("deposit", 10),
-    getCompletedTransactions("payout", 10),
+    getPendingTransactions(VRB_CASHIER_ID),
+    getCompletedTransactions(VRB_CASHIER_ID, "deposit", 10),
+    getCompletedTransactions(VRB_CASHIER_ID, "payout", 10),
   ]);
 
   return (

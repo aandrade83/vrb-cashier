@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { getMethodWithFields } from "@/data/methods";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 import { PayoutForm } from "./_components/PayoutForm";
 
 export default async function PayoutMethodPage({
@@ -17,7 +18,7 @@ export default async function PayoutMethodPage({
   }
 
   const { methodId } = await params;
-  const method = await getMethodWithFields(methodId);
+  const method = await getMethodWithFields(methodId, VRB_CASHIER_ID);
 
   if (!method) {
     redirect("/player/payouts");

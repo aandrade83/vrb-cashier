@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getMethodById } from "@/data/methods";
 import { EditMethodForm } from "./edit-method-form";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 
 export default async function EditMethodPage({
   params,
@@ -8,7 +9,7 @@ export default async function EditMethodPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const method = await getMethodById(id);
+  const method = await getMethodById(id, VRB_CASHIER_ID);
 
   if (!method) notFound();
 

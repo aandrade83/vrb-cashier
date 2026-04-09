@@ -96,7 +96,25 @@
       "Bash(ls:*)",
       "Bash(cd:*)",
       "Bash(xargs grep:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\dashboard\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\users\\\\new\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\methods\\\\new\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\methods\\\\[id]\\\\edit\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\players\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\deposits\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\payouts\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\methods\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\admin\\\\users\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\clerk\\\\queue\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\clerk\\\\queue\\\\[transactionId]\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\player\\\\deposits\\\\[methodId]\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\player\\\\payouts\\\\[methodId]\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\alexi\\\\OneDrive\\\\Documents\\\\TRABAJO\\\\CASHIER\\\\vrb-cashier\\\\src\\\\app\\\\[slug]\\\\[token]\\\\player\\\\transactions\")",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }

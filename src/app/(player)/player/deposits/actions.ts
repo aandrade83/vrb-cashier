@@ -10,13 +10,14 @@ import {
   getPlayerByClerkId,
 } from "@/data/transactions";
 import { getMethodWithFields } from "@/data/methods";
+import { getCashierId } from "@/lib/cashier-context";
 
 type ActionResult = { success: true; transactionId: string } | { success: false; error: string };
 
 const fieldValueSchema = z.object({
   methodFieldId: z.string().uuid(),
   fieldLabelSnapshot: z.string().min(1),
-  fieldTypeSnapshot: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label"]),
+  fieldTypeSnapshot: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label", "random_list", "amount_list", "hyperlink"]),
   value: z.string().nullable(),
 });
 
@@ -24,6 +25,7 @@ const submitDepositSchema = z.object({
   methodId: z.string().uuid(),
   fieldValues: z.array(fieldValueSchema),
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid amount"),
+  expectedAmount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid expected amount").optional(),
   idempotencyKey: z.string().uuid(),
   currency: z.string().default("USD"),
 });
@@ -35,55 +37,63 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
     return { success: false, error: "Unauthorized" };
   }
 
+  const cashierId = await getCashierId();
+
   const parsed = submitDepositSchema.safeParse(data);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { methodId, fieldValues, amount, idempotencyKey, currency } = parsed.data;
+  const { methodId, fieldValues, amount, expectedAmount, idempotencyKey, currency } = parsed.data;
 
-  // Idempotency check
-  const existing = await findTransactionByIdempotencyKey(idempotencyKey);
+  // Amount validation: received amount must be <= expectedAmount
+  if (expectedAmount) {
+    const received = parseFloat(amount);
+    const expected = parseFloat(expectedAmount);
+    if (received > expected) {
+      return { success: false, error: `Amount ${amount} exceeds the expected amount of ${expectedAmount}.` };
+    }
+  }
+
+  const existing = await findTransactionByIdempotencyKey(idempotencyKey, cashierId);
   if (existing) {
     return { success: true, transactionId: existing.id };
   }
 
-  // Verify method is still active
-  const method = await getMethodWithFields(methodId);
+  const method = await getMethodWithFields(methodId, cashierId);
   if (!method) {
     return { success: false, error: "This deposit method is no longer available." };
   }
 
-  // Get player DB id
-  const player = await getPlayerByClerkId(clerkId);
+  const player = await getPlayerByClerkId(clerkId, cashierId);
   if (!player) {
     return { success: false, error: "Player account not found." };
   }
 
-  // Generate reference code
-  const seq = await getNextTransactionSequence("deposit");
+  const seq = await getNextTransactionSequence("deposit", cashierId);
   const year = new Date().getFullYear();
   const referenceCode = `DEP-${year}-${seq.toString().padStart(6, "0")}`;
 
-  // Insert transaction
   const [transaction] = await db
     .insert(transactions)
     .values({
+      cashierId,
       type: "deposit",
       status: "pending",
       playerId: player.id,
       methodId,
       amount,
+      expectedAmount: expectedAmount ?? null,
       currency,
       referenceCode,
       idempotencyKey,
     })
     .returning({ id: transactions.id });
 
-  // Insert field values
   if (fieldValues.length > 0) {
     await db.insert(transactionFieldValues).values(
       fieldValues.map((fv) => ({
+        cashierId,
         transactionId: transaction.id,
         methodFieldId: fv.methodFieldId,
         fieldLabelSnapshot: fv.fieldLabelSnapshot,
@@ -93,7 +103,6 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
     );
   }
 
-  // Insert attachments for file/image fields
   const attachmentFields = fieldValues.filter(
     (fv) =>
       (fv.fieldTypeSnapshot === "file" || fv.fieldTypeSnapshot === "image") &&
@@ -115,6 +124,7 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
           gif: "image/gif",
         };
         return {
+          cashierId,
           transactionId: transaction.id,
           methodFieldId: fv.methodFieldId,
           fileName,
@@ -126,8 +136,8 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
     );
   }
 
-  // Audit log
   await db.insert(auditLogs).values({
+    cashierId,
     actorUserId: player.id,
     actorRole: "player",
     action: "transaction.created",

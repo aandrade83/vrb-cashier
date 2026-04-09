@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { paymentMethods, methodFields, auditLogs } from "@/db/schema";
-import { eq, and, sql, inArray, notInArray } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { transactionFieldValues } from "@/db/schema";
 import type { PaymentMethod, MethodField } from "@/db/schema";
 
@@ -29,12 +29,13 @@ export type MethodInput = {
   fields: FieldInput[];
 };
 
-export async function getActiveDepositMethods(): Promise<PaymentMethod[]> {
+export async function getActiveDepositMethods(cashierId: string): Promise<PaymentMethod[]> {
   return db
     .select()
     .from(paymentMethods)
     .where(
       and(
+        eq(paymentMethods.cashierId, cashierId),
         eq(paymentMethods.type, "deposit"),
         eq(paymentMethods.isActive, true),
         eq(paymentMethods.isDeleted, false)
@@ -43,12 +44,13 @@ export async function getActiveDepositMethods(): Promise<PaymentMethod[]> {
     .orderBy(paymentMethods.createdAt);
 }
 
-export async function getActivePayoutMethods(): Promise<PaymentMethod[]> {
+export async function getActivePayoutMethods(cashierId: string): Promise<PaymentMethod[]> {
   return db
     .select()
     .from(paymentMethods)
     .where(
       and(
+        eq(paymentMethods.cashierId, cashierId),
         eq(paymentMethods.type, "payout"),
         eq(paymentMethods.isActive, true),
         eq(paymentMethods.isDeleted, false)
@@ -57,13 +59,17 @@ export async function getActivePayoutMethods(): Promise<PaymentMethod[]> {
     .orderBy(paymentMethods.createdAt);
 }
 
-export async function getMethodWithFields(methodId: string): Promise<MethodWithFields | null> {
+export async function getMethodWithFields(
+  methodId: string,
+  cashierId: string
+): Promise<MethodWithFields | null> {
   const [method] = await db
     .select()
     .from(paymentMethods)
     .where(
       and(
         eq(paymentMethods.id, methodId),
+        eq(paymentMethods.cashierId, cashierId),
         eq(paymentMethods.isActive, true),
         eq(paymentMethods.isDeleted, false)
       )
@@ -81,11 +87,13 @@ export async function getMethodWithFields(methodId: string): Promise<MethodWithF
   return { ...method, fields };
 }
 
-export async function getAllMethodsWithFields(): Promise<MethodWithFields[]> {
+export async function getAllMethodsWithFields(cashierId: string): Promise<MethodWithFields[]> {
   const methods = await db
     .select()
     .from(paymentMethods)
-    .where(eq(paymentMethods.isDeleted, false))
+    .where(
+      and(eq(paymentMethods.cashierId, cashierId), eq(paymentMethods.isDeleted, false))
+    )
     .orderBy(paymentMethods.type, paymentMethods.createdAt);
 
   if (methods.length === 0) return [];
@@ -102,11 +110,17 @@ export async function getAllMethodsWithFields(): Promise<MethodWithFields[]> {
   }));
 }
 
-export async function getAllActiveMethodsWithFields(): Promise<MethodWithFields[]> {
+export async function getAllActiveMethodsWithFields(cashierId: string): Promise<MethodWithFields[]> {
   const methods = await db
     .select()
     .from(paymentMethods)
-    .where(and(eq(paymentMethods.isActive, true), eq(paymentMethods.isDeleted, false)))
+    .where(
+      and(
+        eq(paymentMethods.cashierId, cashierId),
+        eq(paymentMethods.isActive, true),
+        eq(paymentMethods.isDeleted, false)
+      )
+    )
     .orderBy(paymentMethods.type, paymentMethods.createdAt);
 
   if (methods.length === 0) return [];
@@ -124,11 +138,13 @@ export async function getAllActiveMethodsWithFields(): Promise<MethodWithFields[
 }
 
 export async function getMethodsForAdmin(
+  cashierId: string,
   type: "deposit" | "payout"
 ): Promise<MethodWithFieldCount[]> {
   const rows = await db
     .select({
       id: paymentMethods.id,
+      cashierId: paymentMethods.cashierId,
       name: paymentMethods.name,
       type: paymentMethods.type,
       description: paymentMethods.description,
@@ -143,17 +159,32 @@ export async function getMethodsForAdmin(
       )`,
     })
     .from(paymentMethods)
-    .where(and(eq(paymentMethods.type, type), eq(paymentMethods.isDeleted, false)))
+    .where(
+      and(
+        eq(paymentMethods.cashierId, cashierId),
+        eq(paymentMethods.type, type),
+        eq(paymentMethods.isDeleted, false)
+      )
+    )
     .orderBy(paymentMethods.createdAt);
 
   return rows.map((r) => ({ ...r, fieldCount: Number(r.fieldCount) }));
 }
 
-export async function getMethodById(id: string): Promise<MethodWithFields | null> {
+export async function getMethodById(
+  id: string,
+  cashierId: string
+): Promise<MethodWithFields | null> {
   const [method] = await db
     .select()
     .from(paymentMethods)
-    .where(and(eq(paymentMethods.id, id), eq(paymentMethods.isDeleted, false)))
+    .where(
+      and(
+        eq(paymentMethods.id, id),
+        eq(paymentMethods.cashierId, cashierId),
+        eq(paymentMethods.isDeleted, false)
+      )
+    )
     .limit(1);
 
   if (!method) return null;
@@ -169,11 +200,13 @@ export async function getMethodById(id: string): Promise<MethodWithFields | null
 
 export async function createMethod(
   data: MethodInput,
-  adminUserId: string
+  adminUserId: string,
+  cashierId: string
 ): Promise<string> {
   const [method] = await db
     .insert(paymentMethods)
     .values({
+      cashierId,
       name: data.name,
       type: data.type,
       description: data.description ?? null,
@@ -186,6 +219,7 @@ export async function createMethod(
   if (data.fields.length > 0) {
     await db.insert(methodFields).values(
       data.fields.map((f) => ({
+        cashierId,
         methodId: method.id,
         label: f.label,
         placeholder: f.placeholder ?? null,
@@ -200,6 +234,7 @@ export async function createMethod(
   }
 
   await db.insert(auditLogs).values({
+    cashierId,
     actorUserId: adminUserId,
     action: "method.created",
     entityType: "method",
@@ -213,7 +248,8 @@ export async function createMethod(
 export async function updateMethod(
   id: string,
   data: MethodInput,
-  adminUserId: string
+  adminUserId: string,
+  cashierId: string
 ): Promise<void> {
   await db
     .update(paymentMethods)
@@ -225,23 +261,19 @@ export async function updateMethod(
       isActive: data.isActive,
       updatedAt: new Date(),
     })
-    .where(eq(paymentMethods.id, id));
+    .where(and(eq(paymentMethods.id, id), eq(paymentMethods.cashierId, cashierId)));
 
   // Upsert fields: update existing, insert new, safely delete removed ones
   const incomingIds = data.fields.map((f) => f.id).filter((fid): fid is string => !!fid);
 
-  // Find existing field IDs for this method
   const existingFields = await db
     .select({ id: methodFields.id })
     .from(methodFields)
     .where(eq(methodFields.methodId, id));
 
   const existingIds = existingFields.map((f) => f.id);
-
-  // IDs that were removed in the UI
   const removedIds = existingIds.filter((eid) => !incomingIds.includes(eid));
 
-  // Only delete removed fields that have no transaction_field_values referencing them
   if (removedIds.length > 0) {
     const referenced = await db
       .select({ methodFieldId: transactionFieldValues.methodFieldId })
@@ -256,9 +288,9 @@ export async function updateMethod(
     }
   }
 
-  // Update existing fields and insert new ones
   for (const f of data.fields) {
     const fieldData = {
+      cashierId,
       methodId: id,
       label: f.label,
       placeholder: f.placeholder ?? null,
@@ -271,15 +303,14 @@ export async function updateMethod(
     };
 
     if (f.id && existingIds.includes(f.id)) {
-      // Update existing field
       await db.update(methodFields).set(fieldData).where(eq(methodFields.id, f.id));
     } else {
-      // Insert new field
       await db.insert(methodFields).values(fieldData);
     }
   }
 
   await db.insert(auditLogs).values({
+    cashierId,
     actorUserId: adminUserId,
     action: "method.updated",
     entityType: "method",
@@ -290,12 +321,13 @@ export async function updateMethod(
 
 export async function toggleMethodActive(
   id: string,
-  adminUserId: string
+  adminUserId: string,
+  cashierId: string
 ): Promise<void> {
   const [method] = await db
     .select({ isActive: paymentMethods.isActive })
     .from(paymentMethods)
-    .where(eq(paymentMethods.id, id))
+    .where(and(eq(paymentMethods.id, id), eq(paymentMethods.cashierId, cashierId)))
     .limit(1);
 
   if (!method) return;
@@ -305,9 +337,10 @@ export async function toggleMethodActive(
   await db
     .update(paymentMethods)
     .set({ isActive: newActive, updatedAt: new Date() })
-    .where(eq(paymentMethods.id, id));
+    .where(and(eq(paymentMethods.id, id), eq(paymentMethods.cashierId, cashierId)));
 
   await db.insert(auditLogs).values({
+    cashierId,
     actorUserId: adminUserId,
     action: newActive ? "method.activated" : "method.deactivated",
     entityType: "method",

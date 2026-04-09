@@ -71,8 +71,10 @@ async function run() {
     });
 
     // Insert into Neon DB (idempotent)
+    const VRB_CASHIER_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
     await db.insert(users).values({
       clerkId,
+      cashierId: VRB_CASHIER_ID,
       role,
       email,
       firstName: username,

@@ -4,8 +4,9 @@ import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { setUserActive, deleteUserByClerkId } from "@/data/users";
+import { getCashierId } from "@/lib/cashier-context";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -24,6 +25,8 @@ export async function disableUserAction(data: {
 }): Promise<ActionResult> {
   const authError = await requireAdmin();
   if (authError) return authError;
+
+  const cashierId = await getCashierId();
 
   const parsed = clerkIdSchema.safeParse(data);
   if (!parsed.success) {
@@ -46,7 +49,7 @@ export async function disableUserAction(data: {
     return { success: false, error: "Failed to disable user. Please try again." };
   }
 
-  await setUserActive(clerkId, false);
+  await setUserActive(clerkId, false, cashierId);
   return { success: true };
 }
 
@@ -55,6 +58,8 @@ export async function enableUserAction(data: {
 }): Promise<ActionResult> {
   const authError = await requireAdmin();
   if (authError) return authError;
+
+  const cashierId = await getCashierId();
 
   const parsed = clerkIdSchema.safeParse(data);
   if (!parsed.success) {
@@ -77,7 +82,7 @@ export async function enableUserAction(data: {
     return { success: false, error: "Failed to enable user. Please try again." };
   }
 
-  await setUserActive(clerkId, true);
+  await setUserActive(clerkId, true, cashierId);
   return { success: true };
 }
 
@@ -87,6 +92,8 @@ export async function deleteUserAction(data: {
   const authError = await requireAdmin();
   if (authError) return authError;
 
+  const cashierId = await getCashierId();
+
   const parsed = clerkIdSchema.safeParse(data);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
@@ -94,24 +101,16 @@ export async function deleteUserAction(data: {
 
   const { clerkId } = parsed.data;
 
-  // Get current user's ID
   const { userId: currentUserId } = await auth();
 
-  // Check if trying to delete self
   if (currentUserId === clerkId) {
     return { success: false, error: "You cannot delete your own account." };
-  }
-
-  // Check if trying to delete root user
-  const ROOT_USER_ID = "8bcd74e0-f9a5-4b81-a65b-7b52f1b064cc";
-  if (clerkId === ROOT_USER_ID) {
-    return { success: false, error: "Root user cannot be deleted." };
   }
 
   const [user] = await db
     .select({ role: users.role })
     .from(users)
-    .where(eq(users.clerkId, clerkId))
+    .where(and(eq(users.clerkId, clerkId), eq(users.cashierId, cashierId)))
     .limit(1);
 
   if (!user) {
@@ -134,6 +133,6 @@ export async function deleteUserAction(data: {
     return { success: false, error: "Failed to delete user. Please try again." };
   }
 
-  await deleteUserByClerkId(clerkId);
+  await deleteUserByClerkId(clerkId, cashierId);
   return { success: true };
 }

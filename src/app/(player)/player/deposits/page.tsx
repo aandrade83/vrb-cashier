@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getActiveDepositMethods } from "@/data/methods";
 import { getPlayerByClerkId, getPlayerTransactions } from "@/data/transactions";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
@@ -25,11 +26,11 @@ export default async function DepositsPage() {
   }
 
   const [methods, player] = await Promise.all([
-    getActiveDepositMethods(),
-    getPlayerByClerkId(clerkId),
+    getActiveDepositMethods(VRB_CASHIER_ID),
+    getPlayerByClerkId(clerkId, VRB_CASHIER_ID),
   ]);
 
-  const recentTx = player ? (await getPlayerTransactions(player.id)).slice(0, 5) : [];
+  const recentTx = player ? (await getPlayerTransactions(player.id, VRB_CASHIER_ID)).slice(0, 5) : [];
 
   return (
     <div className="space-y-6 max-w-2xl">

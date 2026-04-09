@@ -10,13 +10,14 @@ import {
   getPlayerByClerkId,
 } from "@/data/transactions";
 import { getMethodWithFields } from "@/data/methods";
+import { getCashierId } from "@/lib/cashier-context";
 
 type ActionResult = { success: true; transactionId: string } | { success: false; error: string };
 
 const fieldValueSchema = z.object({
   methodFieldId: z.string().uuid(),
   fieldLabelSnapshot: z.string().min(1),
-  fieldTypeSnapshot: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label"]),
+  fieldTypeSnapshot: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label", "random_list", "amount_list", "hyperlink"]),
   value: z.string().nullable(),
 });
 
@@ -24,6 +25,7 @@ const submitPayoutSchema = z.object({
   methodId: z.string().uuid(),
   fieldValues: z.array(fieldValueSchema),
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid amount"),
+  expectedAmount: z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid expected amount").optional(),
   idempotencyKey: z.string().uuid(),
   currency: z.string().default("USD"),
 });
@@ -35,40 +37,53 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
     return { success: false, error: "Unauthorized" };
   }
 
+  const cashierId = await getCashierId();
+
   const parsed = submitPayoutSchema.safeParse(data);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
 
-  const { methodId, fieldValues, amount, idempotencyKey, currency } = parsed.data;
+  const { methodId, fieldValues, amount, expectedAmount, idempotencyKey, currency } = parsed.data;
 
-  const existing = await findTransactionByIdempotencyKey(idempotencyKey);
+  // Amount validation: received amount must be <= expectedAmount
+  if (expectedAmount) {
+    const received = parseFloat(amount);
+    const expected = parseFloat(expectedAmount);
+    if (received > expected) {
+      return { success: false, error: `Amount ${amount} exceeds the expected amount of ${expectedAmount}.` };
+    }
+  }
+
+  const existing = await findTransactionByIdempotencyKey(idempotencyKey, cashierId);
   if (existing) {
     return { success: true, transactionId: existing.id };
   }
 
-  const method = await getMethodWithFields(methodId);
+  const method = await getMethodWithFields(methodId, cashierId);
   if (!method) {
     return { success: false, error: "This payout method is no longer available." };
   }
 
-  const player = await getPlayerByClerkId(clerkId);
+  const player = await getPlayerByClerkId(clerkId, cashierId);
   if (!player) {
     return { success: false, error: "Player account not found." };
   }
 
-  const seq = await getNextTransactionSequence("payout");
+  const seq = await getNextTransactionSequence("payout", cashierId);
   const year = new Date().getFullYear();
   const referenceCode = `PAY-${year}-${seq.toString().padStart(6, "0")}`;
 
   const [transaction] = await db
     .insert(transactions)
     .values({
+      cashierId,
       type: "payout",
       status: "pending",
       playerId: player.id,
       methodId,
       amount,
+      expectedAmount: expectedAmount ?? null,
       currency,
       referenceCode,
       idempotencyKey,
@@ -78,6 +93,7 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
   if (fieldValues.length > 0) {
     await db.insert(transactionFieldValues).values(
       fieldValues.map((fv) => ({
+        cashierId,
         transactionId: transaction.id,
         methodFieldId: fv.methodFieldId,
         fieldLabelSnapshot: fv.fieldLabelSnapshot,
@@ -108,6 +124,7 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
           gif: "image/gif",
         };
         return {
+          cashierId,
           transactionId: transaction.id,
           methodFieldId: fv.methodFieldId,
           fileName,
@@ -120,6 +137,7 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
   }
 
   await db.insert(auditLogs).values({
+    cashierId,
     actorUserId: player.id,
     actorRole: "player",
     action: "transaction.created",

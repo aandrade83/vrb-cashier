@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getTransactionDetail, getClerkByClerkId } from "@/data/queue";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 import { lockTransactionAction } from "../actions";
 import { TransactionDetailView } from "./_components/TransactionDetailView";
 
@@ -17,8 +18,8 @@ export default async function TransactionDetailPage({ params }: Props) {
   }
 
   const [tx, currentClerk, lockResult] = await Promise.all([
-    getTransactionDetail(transactionId),
-    getClerkByClerkId(clerkAuthId),
+    getTransactionDetail(transactionId, VRB_CASHIER_ID),
+    getClerkByClerkId(clerkAuthId, VRB_CASHIER_ID),
     lockTransactionAction(transactionId),
   ]);
 

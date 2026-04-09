@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { getAllMethodsWithFields } from "@/data/methods";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 import { PlayersView } from "./_components/PlayersView";
 
 export default async function AdminPlayersPage() {
@@ -10,7 +11,7 @@ export default async function AdminPlayersPage() {
     redirect("/");
   }
 
-  const methods = await getAllMethodsWithFields();
+  const methods = await getAllMethodsWithFields(VRB_CASHIER_ID);
   const deposits = methods.filter((m) => m.type === "deposit");
   const payouts = methods.filter((m) => m.type === "payout");
 

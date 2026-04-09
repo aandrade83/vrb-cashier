@@ -5,6 +5,7 @@ import {
   getCompletedTransactions,
   getClerkByClerkId,
 } from "@/data/queue";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 import { QueueView } from "./_components/QueueView";
 
 export default async function QueuePage() {
@@ -16,10 +17,10 @@ export default async function QueuePage() {
 
   const [currentClerk, pending, completedDeposits, completedPayouts] =
     await Promise.all([
-      getClerkByClerkId(clerkAuthId),
-      getPendingTransactions(),
-      getCompletedTransactions("deposit", 10),
-      getCompletedTransactions("payout", 10),
+      getClerkByClerkId(clerkAuthId, VRB_CASHIER_ID),
+      getPendingTransactions(VRB_CASHIER_ID),
+      getCompletedTransactions(VRB_CASHIER_ID, "deposit", 10),
+      getCompletedTransactions(VRB_CASHIER_ID, "payout", 10),
     ]);
 
   return (

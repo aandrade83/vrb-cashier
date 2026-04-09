@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getActivePayoutMethods } from "@/data/methods";
 import { getPlayerByClerkId, getPlayerTransactions } from "@/data/transactions";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
@@ -25,12 +26,12 @@ export default async function PayoutsPage() {
   }
 
   const [methods, player] = await Promise.all([
-    getActivePayoutMethods(),
-    getPlayerByClerkId(clerkId),
+    getActivePayoutMethods(VRB_CASHIER_ID),
+    getPlayerByClerkId(clerkId, VRB_CASHIER_ID),
   ]);
 
   const recentTx = player
-    ? (await getPlayerTransactions(player.id))
+    ? (await getPlayerTransactions(player.id, VRB_CASHIER_ID))
         .filter((tx) => tx.type === "payout")
         .slice(0, 5)
     : [];

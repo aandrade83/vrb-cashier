@@ -1,7 +1,13 @@
 import { Webhook } from "svix";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, cashiers } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+// Seed cashier ID — all users created via self-registration go to VRB by default.
+// In a true multi-tenant setup, the webhook payload would carry a cashier hint
+// (e.g. via publicMetadata.cashierId set during sign-up redirection).
+const DEFAULT_CASHIER_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 type ClerkUserCreatedData = {
   id: string;
@@ -10,6 +16,7 @@ type ClerkUserCreatedData = {
   last_name: string | null;
   image_url: string | null;
   username: string | null;
+  public_metadata?: { role?: string; cashierId?: string };
 };
 
 export async function POST(request: Request) {
@@ -43,20 +50,35 @@ export async function POST(request: Request) {
   if (evt.type === "user.created") {
     const { id: clerkId, email_addresses, image_url, username } = evt.data;
 
-    // Fetch the user's current metadata directly from Clerk.
-    // This is the source of truth — if createUserAction already set the role,
-    // it will be present here. No DB race condition involved.
+    // Fetch the user's current metadata directly from Clerk
     const clerkUserRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
       headers: { Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}` },
     });
 
     let role: "admin" | "clerk" | "player" = "player";
+    let cashierId = DEFAULT_CASHIER_ID;
 
     if (clerkUserRes.ok) {
-      const clerkUser = await clerkUserRes.json();
+      const clerkUser = await clerkUserRes.json() as { public_metadata?: { role?: string; cashierId?: string } };
       const metaRole = clerkUser.public_metadata?.role;
+      const metaCashierId = clerkUser.public_metadata?.cashierId;
+
       if (metaRole === "admin" || metaRole === "clerk") {
         role = metaRole;
+      }
+
+      // If a specific cashier was set in metadata, use it
+      if (metaCashierId) {
+        // Verify the cashier exists
+        const [cashier] = await db
+          .select({ id: cashiers.id })
+          .from(cashiers)
+          .where(eq(cashiers.id, metaCashierId))
+          .limit(1);
+
+        if (cashier) {
+          cashierId = cashier.id;
+        }
       }
     } else {
       console.error("[webhook/clerk] Failed to fetch user from Clerk:", clerkId);
@@ -77,6 +99,7 @@ export async function POST(request: Request) {
     // Sync to DB — onConflictDoNothing so createUserAction's insert always wins
     await db.insert(users).values({
       clerkId,
+      cashierId,
       role,
       email: email_addresses[0]?.email_address ?? "",
       firstName: username ?? null,

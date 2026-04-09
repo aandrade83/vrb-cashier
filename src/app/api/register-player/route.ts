@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 
 export async function POST() {
   const { userId } = await auth();
@@ -39,6 +40,7 @@ export async function POST() {
   // Insert into DB
   await db.insert(users).values({
     clerkId: userId,
+    cashierId: VRB_CASHIER_ID,
     role: "player",
     email: clerkUser.email_addresses?.[0]?.email_address ?? "",
     firstName: clerkUser.username ?? null,

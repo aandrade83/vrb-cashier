@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/lib/button-variants";
 import Link from "next/link";
 import { getUsersForAdmin } from "@/data/users";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 import { RoleFilterTabs } from "./role-filter-tabs";
 import { UsersTable } from "./users-table";
 
@@ -19,7 +20,7 @@ export default async function UsersPage({
   const validRole: AdminRole | undefined =
     role === "admin" || role === "clerk" || role === "player" ? role : undefined;
 
-  const userList = await getUsersForAdmin(validRole);
+  const userList = await getUsersForAdmin(VRB_CASHIER_ID, validRole);
 
   return (
     <div className="space-y-4">

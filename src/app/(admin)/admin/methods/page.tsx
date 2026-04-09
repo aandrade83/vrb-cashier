@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/lib/button-variants";
 import Link from "next/link";
 import { getMethodsForAdmin } from "@/data/methods";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 import { TypeFilterTabs } from "./type-filter-tabs";
 import { MethodsTable } from "./methods-table";
 
@@ -17,7 +18,7 @@ export default async function MethodsPage({
   const validType: "deposit" | "payout" =
     type === "payout" ? "payout" : "deposit";
 
-  const methods = await getMethodsForAdmin(validType);
+  const methods = await getMethodsForAdmin(VRB_CASHIER_ID, validType);
 
   return (
     <div className="space-y-4">

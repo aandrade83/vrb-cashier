@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { getPlayerByClerkId } from "@/data/transactions";
 import { getPlayerTransactions } from "@/data/transactions";
+import { VRB_CASHIER_ID } from "@/lib/cashier-context";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
@@ -30,8 +31,8 @@ export default async function PlayerTransactionsPage() {
     redirect("/");
   }
 
-  const player = await getPlayerByClerkId(clerkId);
-  const txList = player ? await getPlayerTransactions(player.id) : [];
+  const player = await getPlayerByClerkId(clerkId, VRB_CASHIER_ID);
+  const txList = player ? await getPlayerTransactions(player.id, VRB_CASHIER_ID) : [];
 
   return (
     <div className="space-y-4 max-w-4xl">
