@@ -1,29 +1,29 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import {
   getPendingTransactions,
   getCompletedTransactions,
-  getClerkByClerkId,
+  getClerkById,
 } from "@/data/queue";
-import { getCashierId } from "@/lib/cashier-context";
 import { QueueView } from "@/app/(clerk)/clerk/queue/_components/QueueView";
+import { getUserSession } from "@/lib/auth/session";
 
 export default async function CashierQueuePage({
   params,
 }: {
   params: Promise<{ slug: string; token: string }>;
 }) {
-  const { sessionClaims, userId: clerkAuthId } = await auth();
+  const { slug, token } = await params;
+  const session = await getUserSession();
 
-  if (sessionClaims?.public_metadata?.role !== "clerk" || !clerkAuthId) {
-    redirect("/");
+  if (!session || session.role !== "clerk") {
+    redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const cashierId = await getCashierId();
+  const { userId, cashierId } = session;
 
   const [currentClerk, pending, completedDeposits, completedPayouts] =
     await Promise.all([
-      getClerkByClerkId(clerkAuthId, cashierId),
+      getClerkById(userId, cashierId),
       getPendingTransactions(cashierId),
       getCompletedTransactions(cashierId, "deposit", 10),
       getCompletedTransactions(cashierId, "payout", 10),

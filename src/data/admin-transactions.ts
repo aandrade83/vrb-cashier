@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { db } from "@/db";
-import { transactions, users, paymentMethods } from "@/db/schema";
+import { transactions, cashierUsers, paymentMethods } from "@/db/schema";
 import { eq, and, inArray, gte, lte, desc, ilike } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -19,7 +19,7 @@ export type AdminTransaction = {
   methodName: string;
   playerFirstName: string | null;
   playerLastName: string | null;
-  playerEmail: string;
+  playerEmail: string | null;
   createdAt: Date;
 };
 
@@ -73,13 +73,13 @@ export async function getAdminTransactions({
       amount: transactions.amount,
       currency: transactions.currency,
       methodName: paymentMethods.name,
-      playerFirstName: users.firstName,
-      playerLastName: users.lastName,
-      playerEmail: users.email,
+      playerFirstName: cashierUsers.firstName,
+      playerLastName: cashierUsers.lastName,
+      playerEmail: cashierUsers.email,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
-    .innerJoin(users, eq(transactions.playerId, users.id))
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .where(and(...conditions))
     .orderBy(desc(transactions.createdAt));
@@ -89,7 +89,7 @@ export async function getAdminTransactions({
     return rows.filter(
       (r) =>
         r.referenceCode.toLowerCase().includes(q) ||
-        r.playerEmail.toLowerCase().includes(q) ||
+        (r.playerEmail ?? "").toLowerCase().includes(q) ||
         (r.playerFirstName ?? "").toLowerCase().includes(q) ||
         (r.playerLastName ?? "").toLowerCase().includes(q)
     );

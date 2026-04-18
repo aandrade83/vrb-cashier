@@ -13,12 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { submitDepositAction } from "../../actions";
+import { submitDepositAction } from "@/app/[slug]/[token]/player/deposits/actions";
 import type { PaymentMethod, MethodField } from "@/db/schema";
+import { buildPath } from "@/lib/paths";
 
 type Props = {
   method: PaymentMethod;
   fields: MethodField[];
+  basePath?: string;
 };
 
 type FileUploadState = {
@@ -41,6 +43,13 @@ type FileConfig = {
   allowedExtensions?: string[];
 };
 
+const EXCLUDED_TYPES = ["label", "hidden_label", "name", "address"] as const;
+type ExcludedType = typeof EXCLUDED_TYPES[number];
+
+function isExcluded(fieldType: string): fieldType is ExcludedType {
+  return (EXCLUDED_TYPES as readonly string[]).includes(fieldType);
+}
+
 function HiddenLabelField({ field }: { field: MethodField }) {
   const [open, setOpen] = useState(false);
   return (
@@ -59,7 +68,7 @@ function HiddenLabelField({ field }: { field: MethodField }) {
   );
 }
 
-export function DepositForm({ fields }: Props) {
+export function DepositForm({ fields, basePath }: Props) {
   const router = useRouter();
   const idempotencyKey = useRef(crypto.randomUUID());
 
@@ -107,6 +116,7 @@ export function DepositForm({ fields }: Props) {
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("methodFieldId", field.id);
 
     const res = await fetch("/api/upload", { method: "POST", body: formData });
     const json = await res.json();
@@ -132,7 +142,7 @@ export function DepositForm({ fields }: Props) {
     const newErrors: Record<string, string> = {};
 
     for (const field of fields) {
-      if (field.fieldType === "random_list" || field.fieldType === "label" || field.fieldType === "hidden_label") continue;
+      if (isExcluded(field.fieldType) || field.fieldType === "random_list") continue;
       const value = fieldValues[field.id] ?? "";
       const vr = field.validationRules as ValidationRules | null;
 
@@ -176,13 +186,12 @@ export function DepositForm({ fields }: Props) {
 
     setSubmitting(true);
 
-    // Find amount value
     const amountValue = amountField ? (fieldValues[amountField.id] ?? "0") : "0";
 
     const result = await submitDepositAction({
       methodId: fields[0]?.methodId ?? "",
       fieldValues: fields
-        .filter((f) => f.fieldType !== "label" && f.fieldType !== "hidden_label")
+        .filter((f) => !isExcluded(f.fieldType))
         .map((f) => ({
           methodFieldId: f.id,
           fieldLabelSnapshot: f.label,
@@ -201,171 +210,171 @@ export function DepositForm({ fields }: Props) {
       return;
     }
 
-    router.push(`/player/transactions`);
+    router.push(buildPath(basePath ?? "", "player", "transactions"));
   }
 
   const anyUploading = Object.values(fileState).some((s) => s.uploading);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {fields.map((field) => (
-        <div key={field.id} className="space-y-1">
-          {field.fieldType === "hidden_label" ? (
-            <HiddenLabelField field={field} />
-          ) : field.fieldType === "label" ? (
-            <p className="text-sm font-medium">{field.label}</p>
-          ) : field.fieldType === "random_list" ? (
-            <div className="space-y-1">
-              <p className="text-sm font-medium">{field.label}</p>
-              <p className="text-sm font-mono bg-muted rounded px-3 py-2 select-all break-all">
-                {randomSelections[field.id] ?? "—"}
-              </p>
-            </div>
-          ) : (
-            <>
-          <Label htmlFor={field.id}>
-            {field.label}
-            {field.isRequired && <span className="text-destructive ml-1">*</span>}
-          </Label>
+      {fields.map((field) => {
+        if (isExcluded(field.fieldType)) return null;
 
-          {field.fieldType === "text" && (
-            <div className={field === amountField ? "relative" : undefined}>
-              {field === amountField && (
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                  $
-                </span>
-              )}
-              <Input
-                id={field.id}
-                type="text"
-                placeholder={field.placeholder ?? undefined}
-                value={fieldValues[field.id] ?? ""}
-                onChange={(e) => setValue(field.id, e.target.value)}
-                className={field === amountField ? "pl-6" : undefined}
-              />
-            </div>
-          )}
+        return (
+          <div key={field.id} className="space-y-1">
+            {field.fieldType === "random_list" ? (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{field.label}</p>
+                <p className="text-sm font-mono bg-muted rounded px-3 py-2 select-all break-all">
+                  {randomSelections[field.id] ?? "—"}
+                </p>
+              </div>
+            ) : (
+              <>
+            <Label htmlFor={field.id}>
+              {field.label}
+              {field.isRequired && <span className="text-destructive ml-1">*</span>}
+            </Label>
 
-          {field.fieldType === "textarea" && (
-            <textarea
-              id={field.id}
-              placeholder={field.placeholder ?? undefined}
-              value={fieldValues[field.id] ?? ""}
-              onChange={(e) => setValue(field.id, e.target.value)}
-              rows={3}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
-            />
-          )}
-
-          {field.fieldType === "number" && (
-            <div className={field === amountField ? "relative" : undefined}>
-              {field === amountField && (
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                  $
-                </span>
-              )}
-              <Input
-                id={field.id}
-                type="number"
-                placeholder={field.placeholder ?? undefined}
-                value={fieldValues[field.id] ?? ""}
-                onChange={(e) => setValue(field.id, e.target.value)}
-                className={field === amountField ? "pl-6" : undefined}
-              />
-            </div>
-          )}
-
-          {field.fieldType === "dropdown" && (
-            <Select
-              value={fieldValues[field.id] ?? ""}
-              onValueChange={(v) => { if (v !== null) setValue(field.id, v); }}
-            >
-              <SelectTrigger id={field.id}>
-                <SelectValue placeholder={field.placeholder ?? "Select an option"} />
-              </SelectTrigger>
-              <SelectContent>
-                {(field.dropdownOptions as string[] | null ?? []).map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {field.fieldType === "date" && (
-            <Input
-              id={field.id}
-              type="date"
-              value={fieldValues[field.id] ?? ""}
-              onChange={(e) => setValue(field.id, e.target.value)}
-            />
-          )}
-
-          {field.fieldType === "checkbox" && (
-            <div className="flex items-center gap-2">
-              <input
-                id={field.id}
-                type="checkbox"
-                checked={fieldValues[field.id] === "true"}
-                onChange={(e) => setValue(field.id, e.target.checked ? "true" : "false")}
-                className="h-4 w-4"
-              />
-              <span className="text-sm text-muted-foreground">{field.placeholder ?? field.label}</span>
-            </div>
-          )}
-
-          {(field.fieldType === "file" || field.fieldType === "image") && (
-            <div className="space-y-2">
-              {(() => {
-                const fc = field.fileConfig as FileConfig | null;
-                const exts = fc?.allowedExtensions ?? [];
-                const accept =
-                  field.fieldType === "image"
-                    ? "image/*"
-                    : exts.length > 0
-                    ? exts.map((e) => `.${e}`).join(",")
-                    : "*/*";
-                return (
-                  <Input
-                    id={field.id}
-                    type="file"
-                    accept={accept}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleFileChange(field, file);
-                    }}
-                  />
-                );
-              })()}
-              {fileState[field.id]?.uploading && (
-                <p className="text-sm text-muted-foreground">Uploading…</p>
-              )}
-              {fileState[field.id]?.error && (
-                <p className="text-sm text-destructive">{fileState[field.id].error}</p>
-              )}
-              {field.fieldType === "image" && fileState[field.id]?.previewUrl && (
-                <Image
-                  src={fileState[field.id].previewUrl!}
-                  alt="Preview"
-                  width={120}
-                  height={120}
-                  className="rounded border object-cover"
+            {field.fieldType === "text" && (
+              <div className={field === amountField ? "relative" : undefined}>
+                {field === amountField && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                    $
+                  </span>
+                )}
+                <Input
+                  id={field.id}
+                  type="text"
+                  placeholder={field.placeholder ?? undefined}
+                  value={fieldValues[field.id] ?? ""}
+                  onChange={(e) => setValue(field.id, e.target.value)}
+                  className={field === amountField ? "pl-6" : undefined}
                 />
-              )}
-              {fileState[field.id]?.url && (
-                <p className="text-xs text-muted-foreground">✓ Uploaded successfully</p>
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
-          {errors[field.id] && (
-            <p className="text-sm text-destructive">{errors[field.id]}</p>
-          )}
-            </>
-          )}
-        </div>
-      ))}
+            {field.fieldType === "textarea" && (
+              <textarea
+                id={field.id}
+                placeholder={field.placeholder ?? undefined}
+                value={fieldValues[field.id] ?? ""}
+                onChange={(e) => setValue(field.id, e.target.value)}
+                rows={3}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+              />
+            )}
+
+            {field.fieldType === "number" && (
+              <div className={field === amountField ? "relative" : undefined}>
+                {field === amountField && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                    $
+                  </span>
+                )}
+                <Input
+                  id={field.id}
+                  type="number"
+                  placeholder={field.placeholder ?? undefined}
+                  value={fieldValues[field.id] ?? ""}
+                  onChange={(e) => setValue(field.id, e.target.value)}
+                  className={field === amountField ? "pl-6" : undefined}
+                />
+              </div>
+            )}
+
+            {field.fieldType === "dropdown" && (
+              <Select
+                value={fieldValues[field.id] ?? ""}
+                onValueChange={(v) => { if (v !== null) setValue(field.id, v); }}
+              >
+                <SelectTrigger id={field.id}>
+                  <SelectValue placeholder={field.placeholder ?? "Select an option"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(field.dropdownOptions as string[] | null ?? []).map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {field.fieldType === "date" && (
+              <Input
+                id={field.id}
+                type="date"
+                value={fieldValues[field.id] ?? ""}
+                onChange={(e) => setValue(field.id, e.target.value)}
+              />
+            )}
+
+            {field.fieldType === "checkbox" && (
+              <div className="flex items-center gap-2">
+                <input
+                  id={field.id}
+                  type="checkbox"
+                  checked={fieldValues[field.id] === "true"}
+                  onChange={(e) => setValue(field.id, e.target.checked ? "true" : "false")}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm text-muted-foreground">{field.placeholder ?? field.label}</span>
+              </div>
+            )}
+
+            {(field.fieldType === "file" || field.fieldType === "image") && (
+              <div className="space-y-2">
+                {(() => {
+                  const fc = field.fileConfig as FileConfig | null;
+                  const exts = fc?.allowedExtensions ?? [];
+                  const accept =
+                    field.fieldType === "image"
+                      ? "image/*"
+                      : exts.length > 0
+                      ? exts.map((e) => `.${e}`).join(",")
+                      : "*/*";
+                  return (
+                    <Input
+                      id={field.id}
+                      type="file"
+                      accept={accept}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileChange(field, file);
+                      }}
+                    />
+                  );
+                })()}
+                {fileState[field.id]?.uploading && (
+                  <p className="text-sm text-muted-foreground">Uploading…</p>
+                )}
+                {fileState[field.id]?.error && (
+                  <p className="text-sm text-destructive">{fileState[field.id].error}</p>
+                )}
+                {field.fieldType === "image" && fileState[field.id]?.previewUrl && (
+                  <Image
+                    src={fileState[field.id].previewUrl!}
+                    alt="Preview"
+                    width={120}
+                    height={120}
+                    className="rounded border object-cover"
+                  />
+                )}
+                {fileState[field.id]?.url && (
+                  <p className="text-xs text-muted-foreground">✓ Uploaded successfully</p>
+                )}
+              </div>
+            )}
+
+            {errors[field.id] && (
+              <p className="text-sm text-destructive">{errors[field.id]}</p>
+            )}
+              </>
+            )}
+          </div>
+        );
+      })}
 
       {serverError && (
         <p className="text-sm text-destructive">{serverError}</p>

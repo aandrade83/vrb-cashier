@@ -41,9 +41,13 @@ export async function createCashier(
   return cashier;
 }
 
+export async function deleteCashier(id: string): Promise<void> {
+  await db.delete(cashiers).where(eq(cashiers.id, id));
+}
+
 export async function updateCashier(
   id: string,
-  data: Partial<Pick<Cashier, "name" | "logoUrl" | "contactEmail" | "contactPhone" | "isActive">>
+  data: Partial<Pick<Cashier, "name" | "logoUrl" | "clientUrl" | "contactEmail" | "contactPhone" | "isActive">>
 ): Promise<Cashier> {
   const [cashier] = await db
     .update(cashiers)

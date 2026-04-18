@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
   const { email, password } = parsed.data;
 
-  if (!verifyMasterCredentials(email, password)) {
+  if (!(await verifyMasterCredentials(email, password))) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 

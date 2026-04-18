@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/lib/button-variants";
 import Link from "next/link";
@@ -14,8 +13,6 @@ export default async function CashierMethodsPage({
   params: Promise<{ slug: string; token: string }>;
   searchParams: Promise<{ type?: string }>;
 }) {
-  await auth();
-
   const { slug, token } = await params;
   const { type } = await searchParams;
   const cashierId = await getCashierId();
@@ -37,7 +34,7 @@ export default async function CashierMethodsPage({
       <TypeFilterTabs currentType={validType} />
       <Card>
         <CardContent className="p-0">
-          <MethodsTable methods={methods} />
+          <MethodsTable methods={methods} base={base} />
         </CardContent>
       </Card>
     </div>

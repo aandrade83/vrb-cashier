@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import {
   transactions,
-  users,
+  cashierUsers,
   paymentMethods,
   transactionFieldValues,
   transactionAttachments,
@@ -22,7 +22,7 @@ export type QueueTransaction = {
   methodName: string;
   playerFirstName: string | null;
   playerLastName: string | null;
-  playerEmail: string;
+  playerEmail: string | null;
   lockedByClerkId: string | null;
   lockedByClerkFirstName: string | null;
   lockedByClerkLastName: string | null;
@@ -32,7 +32,7 @@ export type QueueTransaction = {
 };
 
 export async function getPendingTransactions(cashierId: string): Promise<QueueTransaction[]> {
-  const clerkUser = alias(users, "clerk_user");
+  const clerkUser = alias(cashierUsers, "clerk_user");
 
   const rows = await db
     .select({
@@ -43,9 +43,9 @@ export async function getPendingTransactions(cashierId: string): Promise<QueueTr
       amount: transactions.amount,
       currency: transactions.currency,
       methodName: paymentMethods.name,
-      playerFirstName: users.firstName,
-      playerLastName: users.lastName,
-      playerEmail: users.email,
+      playerFirstName: cashierUsers.firstName,
+      playerLastName: cashierUsers.lastName,
+      playerEmail: cashierUsers.email,
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
@@ -54,7 +54,7 @@ export async function getPendingTransactions(cashierId: string): Promise<QueueTr
       createdAt: transactions.createdAt,
     })
     .from(transactions)
-    .innerJoin(users, eq(transactions.playerId, users.id))
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
     .where(
@@ -75,7 +75,7 @@ export async function getCompletedTransactions(
   type: "deposit" | "payout",
   limit = 10
 ): Promise<QueueTransaction[]> {
-  const clerkUser = alias(users, "clerk_user");
+  const clerkUser = alias(cashierUsers, "clerk_user");
 
   const rows = await db
     .select({
@@ -86,9 +86,9 @@ export async function getCompletedTransactions(
       amount: transactions.amount,
       currency: transactions.currency,
       methodName: paymentMethods.name,
-      playerFirstName: users.firstName,
-      playerLastName: users.lastName,
-      playerEmail: users.email,
+      playerFirstName: cashierUsers.firstName,
+      playerLastName: cashierUsers.lastName,
+      playerEmail: cashierUsers.email,
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
@@ -97,7 +97,7 @@ export async function getCompletedTransactions(
       createdAt: transactions.createdAt,
     })
     .from(transactions)
-    .innerJoin(users, eq(transactions.playerId, users.id))
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
     .where(
@@ -127,7 +127,7 @@ export type TransactionDetail = {
   methodType: string;
   playerFirstName: string | null;
   playerLastName: string | null;
-  playerEmail: string;
+  playerEmail: string | null;
   lockedByClerkId: string | null;
   lockedByClerkFirstName: string | null;
   lockedByClerkLastName: string | null;
@@ -162,8 +162,8 @@ export async function getTransactionDetail(
   transactionId: string,
   cashierId: string
 ): Promise<TransactionDetail | null> {
-  const clerkUser = alias(users, "clerk_user");
-  const updateClerk = alias(users, "update_clerk");
+  const clerkUser = alias(cashierUsers, "clerk_user");
+  const updateClerk = alias(cashierUsers, "update_clerk");
 
   const [row] = await db
     .select({
@@ -176,9 +176,9 @@ export async function getTransactionDetail(
       internalNote: transactions.internalNote,
       methodName: paymentMethods.name,
       methodType: paymentMethods.type,
-      playerFirstName: users.firstName,
-      playerLastName: users.lastName,
-      playerEmail: users.email,
+      playerFirstName: cashierUsers.firstName,
+      playerLastName: cashierUsers.lastName,
+      playerEmail: cashierUsers.email,
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
@@ -187,7 +187,7 @@ export async function getTransactionDetail(
       createdAt: transactions.createdAt,
     })
     .from(transactions)
-    .innerJoin(users, eq(transactions.playerId, users.id))
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
     .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
@@ -236,14 +236,14 @@ export async function getTransactionDetail(
 
 // ─── Clerk lookup ──────────────────────────────────────────────────────────────
 
-export async function getClerkByClerkId(
-  clerkId: string,
+export async function getClerkById(
+  userId: string,
   cashierId: string
 ): Promise<{ id: string; firstName: string | null; lastName: string | null } | null> {
   const [row] = await db
-    .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
-    .from(users)
-    .where(and(eq(users.clerkId, clerkId), eq(users.cashierId, cashierId)))
+    .select({ id: cashierUsers.id, firstName: cashierUsers.firstName, lastName: cashierUsers.lastName })
+    .from(cashierUsers)
+    .where(and(eq(cashierUsers.id, userId), eq(cashierUsers.cashierId, cashierId)))
     .limit(1);
   return row ?? null;
 }

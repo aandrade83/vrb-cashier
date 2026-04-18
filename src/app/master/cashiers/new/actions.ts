@@ -9,6 +9,7 @@ import { randomBytes } from "crypto";
 const schema = z.object({
   name: z.string().min(1).max(100),
   slug: z.string().min(2).max(10).regex(/^[a-z0-9]+$/, "Only lowercase letters and numbers"),
+  clientUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
   contactEmail: z.string().email().optional().or(z.literal("")),
   contactPhone: z.string().optional(),
 });
@@ -16,6 +17,7 @@ const schema = z.object({
 export async function createCashierAction(data: {
   name: string;
   slug: string;
+  clientUrl?: string;
   contactEmail?: string;
   contactPhone?: string;
 }) {
@@ -27,7 +29,7 @@ export async function createCashierAction(data: {
     return { error: parsed.error.issues[0]?.message ?? "Invalid data" };
   }
 
-  const { name, slug, contactEmail, contactPhone } = parsed.data;
+  const { name, slug, clientUrl, contactEmail, contactPhone } = parsed.data;
 
   // Generate a 7-character alphanumeric token
   const token = randomBytes(4).toString("hex").slice(0, 7).toUpperCase();
@@ -37,6 +39,7 @@ export async function createCashierAction(data: {
       name,
       slug,
       token,
+      clientUrl: clientUrl || null,
       contactEmail: contactEmail || null,
       contactPhone: contactPhone || null,
       isActive: true,

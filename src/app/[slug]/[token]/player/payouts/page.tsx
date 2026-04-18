@@ -1,9 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { getActivePayoutMethods } from "@/data/methods";
-import { getCashierId } from "@/lib/cashier-context";
+import { getUserSession } from "@/lib/auth/session";
 
 export default async function CashierPayoutsPage({
   params,
@@ -11,13 +10,13 @@ export default async function CashierPayoutsPage({
   params: Promise<{ slug: string; token: string }>;
 }) {
   const { slug, token } = await params;
-  const { sessionClaims, userId: clerkId } = await auth();
+  const session = await getUserSession();
 
-  if (sessionClaims?.public_metadata?.role !== "player" || !clerkId) {
-    redirect("/");
+  if (!session || session.role !== "player") {
+    redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const cashierId = await getCashierId();
+  const cashierId = session.cashierId;
   const base = `/${slug}/${token}/player`;
 
   const methods = await getActivePayoutMethods(cashierId);

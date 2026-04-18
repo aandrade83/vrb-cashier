@@ -12,6 +12,7 @@ export function NewCashierForm() {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slug, setSlug] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,7 +22,8 @@ export function NewCashierForm() {
     const form = new FormData(e.currentTarget);
     const result = await createCashierAction({
       name: form.get("name") as string,
-      slug: form.get("slug") as string,
+      slug: (form.get("slug") as string).toLowerCase(),
+      clientUrl: form.get("clientUrl") as string,
       contactEmail: form.get("contactEmail") as string,
       contactPhone: form.get("contactPhone") as string,
     });
@@ -48,17 +50,31 @@ export function NewCashierForm() {
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="slug">Slug (2-10 chars, lowercase)</Label>
+            <Label htmlFor="slug">Slug</Label>
             <Input
               id="slug"
               name="slug"
               placeholder="vrb"
               maxLength={10}
-              pattern="[a-z0-9]+"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value.toLowerCase())}
               required
             />
             <p className="text-xs text-muted-foreground">
-              Used in the URL: /slug/token/...
+              Choose some initials as identifier (e.g. &quot;vrb&quot;). Always stored lowercase.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="clientUrl">Client Site URL (optional)</Label>
+            <Input
+              id="clientUrl"
+              name="clientUrl"
+              type="url"
+              placeholder="https://client-site.com"
+            />
+            <p className="text-xs text-muted-foreground">
+              The URL of the client&apos;s website where this cashier will be embedded.
             </p>
           </div>
 
@@ -76,13 +92,13 @@ export function NewCashierForm() {
             <Button type="submit" disabled={loading} className="flex-1">
               {loading ? "Creating..." : "Create Cashier"}
             </Button>
-            <button
+            <Button
               type="button"
-              className="px-4 py-2 rounded-md border text-sm font-medium hover:bg-muted transition-colors"
+              variant="outline"
               onClick={() => router.push("/master/dashboard")}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       </CardContent>

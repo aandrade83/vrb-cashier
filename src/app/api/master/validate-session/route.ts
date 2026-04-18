@@ -1,7 +1,7 @@
 // Internal API used by middleware to validate master session tokens.
 
 import { NextRequest, NextResponse } from "next/server";
-import { validateMasterSession } from "@/lib/master-auth";
+import { getMasterSessionData } from "@/lib/master-auth";
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
@@ -10,11 +10,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing token" }, { status: 400 });
   }
 
-  const valid = await validateMasterSession(token);
+  const result = await getMasterSessionData(token);
 
-  if (!valid) {
+  if (!result.valid) {
     return NextResponse.json({ error: "Invalid or expired session" }, { status: 401 });
   }
 
-  return NextResponse.json({ valid: true });
+  return NextResponse.json({
+    valid: true,
+    actingCashierId: result.actingCashierId,
+  });
 }

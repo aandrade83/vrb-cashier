@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/lib/button-variants";
 import Link from "next/link";
@@ -16,7 +15,6 @@ export default async function CashierUsersPage({
   params: Promise<{ slug: string; token: string }>;
   searchParams: Promise<{ role?: string }>;
 }) {
-  const { userId } = await auth();
   const { slug, token } = await params;
   const { role } = await searchParams;
   const cashierId = await getCashierId();
@@ -38,7 +36,7 @@ export default async function CashierUsersPage({
       <RoleFilterTabs currentRole={validRole} />
       <Card>
         <CardContent className="p-0">
-          <UsersTable users={userList} currentUserId={userId} />
+          <UsersTable users={userList} />
         </CardContent>
       </Card>
     </div>

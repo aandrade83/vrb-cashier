@@ -1,6 +1,5 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import {
@@ -9,10 +8,11 @@ import {
   toggleMethodActive,
   getMethodById,
 } from "@/data/methods";
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
 import { getCashierId } from "@/lib/cashier-context";
+import { getSessionForCashier } from "@/lib/auth/session";
+import { db } from "@/db";
+import { paymentMethods, transactions } from "@/db/schema";
+import { and, eq, inArray, count } from "drizzle-orm";
 
 type ActionResult = { success: true; methodId?: string } | { success: false; error: string };
 
@@ -20,7 +20,7 @@ const fieldSchema = z.object({
   id: z.string().uuid().optional(),
   label: z.string().min(1),
   placeholder: z.string().optional().nullable(),
-  fieldType: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label", "random_list", "amount_list", "hyperlink"]),
+  fieldType: z.enum(["text", "textarea", "number", "dropdown", "file", "image", "date", "checkbox", "label", "hidden_label", "random_list", "amount_list", "hyperlink", "name", "address"]),
   isRequired: z.boolean(),
   displayOrder: z.number().int().min(0),
   dropdownOptions: z.array(z.string()).optional().nullable(),
@@ -50,19 +50,10 @@ const methodSchema = z.object({
 });
 
 async function requireAdmin(cashierId: string): Promise<{ adminDbId: string } | { error: string }> {
-  const { sessionClaims, userId } = await auth();
-  if (sessionClaims?.public_metadata?.role !== "admin" || !userId) {
-    return { error: "Unauthorized" };
-  }
-
-  const [adminRecord] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.clerkId, userId), eq(users.cashierId, cashierId)))
-    .limit(1);
-
-  if (!adminRecord) return { error: "Admin record not found" };
-  return { adminDbId: adminRecord.id };
+  const access = await getSessionForCashier(cashierId);
+  if (!access || access.role !== "admin") return { error: "Unauthorized" };
+  if (!access.userId) return { error: "Master session cannot perform this action directly. Use tenant admin panel." };
+  return { adminDbId: access.userId };
 }
 
 export async function createMethodAction(data: unknown): Promise<ActionResult> {
@@ -113,6 +104,46 @@ export async function updateMethodAction(id: string, data: unknown): Promise<Act
 
   revalidatePath("/admin/methods");
   return { success: true };
+}
+
+type DeleteResult =
+  | { success: true; deleted: true }
+  | { success: true; deleted: false; deactivated: true }
+  | { success: false; error: string };
+
+export async function deleteMethodAction(data: { id: string }): Promise<DeleteResult> {
+  const cashierId = await getCashierId();
+  const adminAuth = await requireAdmin(cashierId);
+  if ("error" in adminAuth) return { success: false, error: adminAuth.error };
+
+  const [historyRow] = await db
+    .select({ count: count() })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.methodId, data.id),
+        eq(transactions.cashierId, cashierId),
+        inArray(transactions.status, ["approved", "rejected", "completed"])
+      )
+    );
+
+  const hasHistory = Number(historyRow?.count ?? 0) > 0;
+
+  if (hasHistory) {
+    await db
+      .update(paymentMethods)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(and(eq(paymentMethods.id, data.id), eq(paymentMethods.cashierId, cashierId)));
+    revalidatePath("/admin/methods");
+    return { success: true, deleted: false, deactivated: true };
+  }
+
+  await db
+    .update(paymentMethods)
+    .set({ isDeleted: true, isActive: false, updatedAt: new Date() })
+    .where(and(eq(paymentMethods.id, data.id), eq(paymentMethods.cashierId, cashierId)));
+  revalidatePath("/admin/methods");
+  return { success: true, deleted: true };
 }
 
 export async function toggleMethodActiveAction(data: { id: string }): Promise<ActionResult> {

@@ -1,24 +1,24 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { getMethodWithFields } from "@/data/methods";
-import { getCashierId } from "@/lib/cashier-context";
 import { PayoutForm } from "@/app/(player)/player/payouts/[methodId]/_components/PayoutForm";
+import { buildPath } from "@/lib/paths";
+import { getUserSession } from "@/lib/auth/session";
 
 export default async function CashierPayoutMethodPage({
   params,
 }: {
   params: Promise<{ slug: string; token: string; methodId: string }>;
 }) {
-  const { sessionClaims } = await auth();
+  const { slug, token, methodId } = await params;
+  const session = await getUserSession();
 
-  if (sessionClaims?.public_metadata?.role !== "player") {
-    redirect("/");
+  if (!session || session.role !== "player") {
+    redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const { slug, token, methodId } = await params;
-  const cashierId = await getCashierId();
+  const cashierId = session.cashierId;
   const base = `/${slug}/${token}/player`;
 
   const method = await getMethodWithFields(methodId, cashierId);
@@ -59,7 +59,7 @@ export default async function CashierPayoutMethodPage({
         </div>
       )}
 
-      <PayoutForm method={method} fields={method.fields} />
+      <PayoutForm method={method} fields={method.fields} basePath={buildPath(slug, token)} />
     </div>
   );
 }

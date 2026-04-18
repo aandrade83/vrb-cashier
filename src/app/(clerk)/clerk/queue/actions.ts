@@ -1,6 +1,5 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
@@ -9,11 +8,12 @@ import {
   transactionUpdates,
   notifications,
   auditLogs,
-  users,
+  cashierUsers,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { getClerkByClerkId } from "@/data/queue";
+import { getClerkById } from "@/data/queue";
 import { getCashierId } from "@/lib/cashier-context";
+import { getUserSession } from "@/lib/auth/session";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -22,9 +22,9 @@ type LockResult =
   | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
 
 async function requireClerk(cashierId: string) {
-  const { sessionClaims, userId } = await auth();
-  if (sessionClaims?.public_metadata?.role !== "clerk" || !userId) return null;
-  const clerk = await getClerkByClerkId(userId, cashierId);
+  const session = await getUserSession();
+  if (!session || session.role !== "clerk" || session.cashierId !== cashierId) return null;
+  const clerk = await getClerkById(session.userId, cashierId);
   return clerk;
 }
 
@@ -76,9 +76,9 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
   }
 
   const [lockHolder] = await db
-    .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
-    .from(users)
-    .where(eq(users.id, tx.lockedByClerkId!))
+    .select({ id: cashierUsers.id, firstName: cashierUsers.firstName, lastName: cashierUsers.lastName })
+    .from(cashierUsers)
+    .where(eq(cashierUsers.id, tx.lockedByClerkId!))
     .limit(1);
 
   const [txFull] = await db
@@ -244,9 +244,9 @@ export async function updateTransactionStatusAction(
     .returning({ id: transactionUpdates.id });
 
   const [player] = await db
-    .select({ id: users.id, email: users.email, firstName: users.firstName })
-    .from(users)
-    .where(eq(users.id, tx.playerId))
+    .select({ id: cashierUsers.id, email: cashierUsers.email, firstName: cashierUsers.firstName })
+    .from(cashierUsers)
+    .where(eq(cashierUsers.id, tx.playerId))
     .limit(1);
 
   await db.insert(notifications).values({

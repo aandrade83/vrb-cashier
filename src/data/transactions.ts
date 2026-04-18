@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { transactions, users, paymentMethods } from "@/db/schema";
+import { transactions, cashierUsers, paymentMethods } from "@/db/schema";
 import { eq, count, desc, and } from "drizzle-orm";
 
 export type PlayerTransaction = {
@@ -19,7 +19,7 @@ export async function getPlayerTransactions(
   playerDbId: string,
   cashierId: string
 ): Promise<PlayerTransaction[]> {
-  const player = users;
+  const player = cashierUsers;
   const rows = await db
     .select({
       id: transactions.id,
@@ -67,14 +67,14 @@ export async function getNextTransactionSequence(
   return (result?.total ?? 0) + 1;
 }
 
-export async function getPlayerByClerkId(
-  clerkId: string,
+export async function getPlayerById(
+  userId: string,
   cashierId: string
 ): Promise<{ id: string } | null> {
   const [row] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.clerkId, clerkId), eq(users.cashierId, cashierId)))
+    .select({ id: cashierUsers.id })
+    .from(cashierUsers)
+    .where(and(eq(cashierUsers.id, userId), eq(cashierUsers.cashierId, cashierId)))
     .limit(1);
   return row ?? null;
 }

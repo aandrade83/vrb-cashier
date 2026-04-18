@@ -26,10 +26,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { disableUserAction, enableUserAction, deleteUserAction } from "./actions";
-import type { User } from "@/db/schema";
+import type { CashierUser } from "@/db/schema";
 
 type Props = {
-  users: User[];
+  users: CashierUser[];
   currentUserId?: string | null;
 };
 
@@ -38,20 +38,20 @@ export function UsersTable({ users, currentUserId }: Props) {
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  function handleToggleActive(user: User) {
-    setPendingId(user.clerkId);
+  function handleToggleActive(user: CashierUser) {
+    setPendingId(user.id);
     startTransition(async () => {
       const action = user.isActive ? disableUserAction : enableUserAction;
-      await action({ clerkId: user.clerkId });
+      await action({ userId: user.id });
       router.refresh();
       setPendingId(null);
     });
   }
 
-  function handleDelete(clerkId: string) {
-    setPendingId(clerkId);
+  function handleDelete(userId: string) {
+    setPendingId(userId);
     startTransition(async () => {
-      await deleteUserAction({ clerkId });
+      await deleteUserAction({ userId });
       router.refresh();
       setPendingId(null);
     });
@@ -84,13 +84,13 @@ export function UsersTable({ users, currentUserId }: Props) {
           </TableRow>
         ) : (
           users.map((user) => {
-            const isRowPending = pendingId === user.clerkId && isPending;
+            const isRowPending = pendingId === user.id && isPending;
             const initials =
               (user.firstName?.[0] ?? "") + (user.lastName?.[0] ?? "");
             
             // Check if delete should be disabled
-            const isCurrentUser = currentUserId === user.clerkId;
-            const isRootUser = user.clerkId === ROOT_USER_ID;
+            const isCurrentUser = currentUserId === user.id;
+            const isRootUser = user.id === ROOT_USER_ID;
             const canDelete = !isCurrentUser && !isRootUser && user.role !== "player";
 
             return (
@@ -163,7 +163,7 @@ export function UsersTable({ users, currentUserId }: Props) {
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
                             <AlertDialogAction
                               variant="destructive"
-                              onClick={() => handleDelete(user.clerkId)}
+                              onClick={() => handleDelete(user.id)}
                             >
                               Delete
                             </AlertDialogAction>

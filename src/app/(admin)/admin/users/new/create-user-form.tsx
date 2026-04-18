@@ -28,9 +28,11 @@ export function CreateUserForm() {
 
     const form = e.currentTarget;
     const data = {
-      email: (form.elements.namedItem("email") as HTMLInputElement).value,
+      username: (form.elements.namedItem("username") as HTMLInputElement).value,
+      password: (form.elements.namedItem("password") as HTMLInputElement).value,
       firstName: (form.elements.namedItem("firstName") as HTMLInputElement).value,
       lastName: (form.elements.namedItem("lastName") as HTMLInputElement).value,
+      email: (form.elements.namedItem("email") as HTMLInputElement).value,
       role,
     };
 
@@ -50,16 +52,27 @@ export function CreateUserForm() {
       <CardContent className="pt-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <Label htmlFor="firstName">First Name</Label>
-            <Input id="firstName" name="firstName" required />
+            <Label htmlFor="username">Username</Label>
+            <Input id="username" name="username" required autoComplete="off" />
+            <p className="text-xs text-muted-foreground">
+              Lowercase letters, numbers, dots, underscores, hyphens only.
+            </p>
           </div>
           <div className="space-y-1">
-            <Label htmlFor="lastName">Last Name</Label>
-            <Input id="lastName" name="lastName" required />
+            <Label htmlFor="password">Initial Password</Label>
+            <Input id="password" name="password" type="password" required minLength={8} autoComplete="new-password" />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" required />
+            <Label htmlFor="firstName">First Name (optional)</Label>
+            <Input id="firstName" name="firstName" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="lastName">Last Name (optional)</Label>
+            <Input id="lastName" name="lastName" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="email">Email (optional)</Label>
+            <Input id="email" name="email" type="email" />
           </div>
           <div className="space-y-1">
             <Label>Role</Label>

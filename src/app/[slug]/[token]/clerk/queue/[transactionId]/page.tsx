@@ -1,9 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { getTransactionDetail, getClerkByClerkId } from "@/data/queue";
-import { getCashierId } from "@/lib/cashier-context";
+import { getTransactionDetail, getClerkById } from "@/data/queue";
 import { lockTransactionAction } from "@/app/(clerk)/clerk/queue/actions";
 import { TransactionDetailView } from "@/app/(clerk)/clerk/queue/[transactionId]/_components/TransactionDetailView";
+import { getUserSession } from "@/lib/auth/session";
 
 export default async function CashierTransactionDetailPage({
   params,
@@ -11,17 +10,17 @@ export default async function CashierTransactionDetailPage({
   params: Promise<{ slug: string; token: string; transactionId: string }>;
 }) {
   const { transactionId, slug, token } = await params;
-  const { sessionClaims, userId: clerkAuthId } = await auth();
+  const session = await getUserSession();
 
-  if (sessionClaims?.public_metadata?.role !== "clerk" || !clerkAuthId) {
-    redirect("/");
+  if (!session || session.role !== "clerk") {
+    redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const cashierId = await getCashierId();
+  const { userId, cashierId } = session;
 
   const [tx, currentClerk, lockResult] = await Promise.all([
     getTransactionDetail(transactionId, cashierId),
-    getClerkByClerkId(clerkAuthId, cashierId),
+    getClerkById(userId, cashierId),
     lockTransactionAction(transactionId),
   ]);
 

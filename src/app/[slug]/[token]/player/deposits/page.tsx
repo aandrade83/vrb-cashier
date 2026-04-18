@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -6,9 +5,9 @@ import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getActiveDepositMethods } from "@/data/methods";
-import { getPlayerByClerkId, getPlayerTransactions } from "@/data/transactions";
-import { getCashierId } from "@/lib/cashier-context";
+import { getPlayerById, getPlayerTransactions } from "@/data/transactions";
 import { STATUS_LABELS } from "@/data/admin-transactions";
+import { getUserSession } from "@/lib/auth/session";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
@@ -25,18 +24,18 @@ export default async function CashierDepositsPage({
   params: Promise<{ slug: string; token: string }>;
 }) {
   const { slug, token } = await params;
-  const { sessionClaims, userId: clerkId } = await auth();
+  const session = await getUserSession();
 
-  if (sessionClaims?.public_metadata?.role !== "player" || !clerkId) {
-    redirect("/");
+  if (!session || session.role !== "player") {
+    redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const cashierId = await getCashierId();
+  const { userId, cashierId } = session;
   const base = `/${slug}/${token}/player`;
 
   const [methods, player] = await Promise.all([
     getActiveDepositMethods(cashierId),
-    getPlayerByClerkId(clerkId, cashierId),
+    getPlayerById(userId, cashierId),
   ]);
 
   const recentTx = player ? (await getPlayerTransactions(player.id, cashierId)).slice(0, 5) : [];
