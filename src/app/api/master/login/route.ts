@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyMasterCredentials, createMasterSession, MASTER_SESSION_COOKIE } from "@/lib/master-auth";
+import {
+  verifyMasterCredentials,
+  createMasterSession,
+  MASTER_SESSION_COOKIE,
+} from "@/lib/master-auth";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -8,7 +12,7 @@ const loginSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const body = await req.json() as unknown;
+  const body = (await req.json()) as unknown;
   const parsed = loginSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -26,9 +30,9 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true });
   res.cookies.set(MASTER_SESSION_COOKIE, token, {
     httpOnly: true,
-    sameSite: "strict",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 8 * 60 * 60, // 8 hours
+    sameSite: "lax",
+    secure: true,
+    maxAge: 8 * 60 * 60,
     path: "/",
   });
 
