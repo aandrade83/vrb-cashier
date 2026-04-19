@@ -32,8 +32,7 @@ export default function MasterLoginPage() {
         return;
       }
 
-      router.push("/master/dashboard");
-      router.refresh();
+      window.location.href = "/master/dashboard";
     } catch {
       setError("An unexpected error occurred");
     } finally {

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getAllCashiers } from "@/data/cashiers";
 import { isMasterAuthenticated } from "@/lib/master-auth";
 import { redirect } from "next/navigation";

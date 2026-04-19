@@ -124,7 +124,7 @@ function homeForRole(role: string, slug: string, token: string): string {
 export default async function middleware(req: NextRequest) {
   const url = req.nextUrl;
   const pathname = url.pathname;
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = req.nextUrl.origin;
 
   // ------------------------------------------------------------------
   // 1. Static assets and Next.js internals — pass through

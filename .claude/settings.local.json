@@ -145,7 +145,8 @@
       "Bash(netstat -ano)",
       "Bash(taskkill /PID 25500 /F)",
       "PowerShell(Stop-Process *)",
-      "Bash(NEXT_TURBOPACK=0 npm run build)"
+      "Bash(NEXT_TURBOPACK=0 npm run build)",
+      "Bash(git push *)"
     ]
   }
 }
