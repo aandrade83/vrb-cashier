@@ -1,139 +1,74 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { setUserActive, deleteUserByClerkId } from "@/data/users";
+import { cashierUsers } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { setUserActive, deleteUser } from "@/data/users";
+import { getCashierId } from "@/lib/cashier-context";
+import { getUserSession } from "@/lib/auth/session";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
-const clerkIdSchema = z.object({ clerkId: z.string().min(1) });
+const userIdSchema = z.object({ userId: z.string().uuid() });
 
-async function requireAdmin(): Promise<ActionResult | null> {
-  const { sessionClaims } = await auth();
-  if (sessionClaims?.public_metadata?.role !== "admin") {
-    return { success: false, error: "Unauthorized" };
+async function requireAdmin(): Promise<{ sessionUserId: string } | { error: string }> {
+  const session = await getUserSession();
+  if (!session || session.role !== "admin") {
+    return { error: "Unauthorized" };
   }
-  return null;
+  return { sessionUserId: session.userId };
 }
 
-export async function disableUserAction(data: {
-  clerkId: string;
-}): Promise<ActionResult> {
-  const authError = await requireAdmin();
-  if (authError) return authError;
+export async function disableUserAction(data: { userId: string }): Promise<ActionResult> {
+  const authResult = await requireAdmin();
+  if ("error" in authResult) return { success: false, error: authResult.error };
 
-  const parsed = clerkIdSchema.safeParse(data);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.issues[0].message };
-  }
+  const cashierId = await getCashierId();
+  const parsed = userIdSchema.safeParse(data);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-  const { clerkId } = parsed.data;
-
-  const res = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ banned: true }),
-  });
-
-  if (!res.ok) {
-    console.error("[disableUserAction] Clerk API error:", await res.text());
-    return { success: false, error: "Failed to disable user. Please try again." };
-  }
-
-  await setUserActive(clerkId, false);
+  await setUserActive(parsed.data.userId, false, cashierId);
   return { success: true };
 }
 
-export async function enableUserAction(data: {
-  clerkId: string;
-}): Promise<ActionResult> {
-  const authError = await requireAdmin();
-  if (authError) return authError;
+export async function enableUserAction(data: { userId: string }): Promise<ActionResult> {
+  const authResult = await requireAdmin();
+  if ("error" in authResult) return { success: false, error: authResult.error };
 
-  const parsed = clerkIdSchema.safeParse(data);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.issues[0].message };
-  }
+  const cashierId = await getCashierId();
+  const parsed = userIdSchema.safeParse(data);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-  const { clerkId } = parsed.data;
-
-  const res = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ banned: false }),
-  });
-
-  if (!res.ok) {
-    console.error("[enableUserAction] Clerk API error:", await res.text());
-    return { success: false, error: "Failed to enable user. Please try again." };
-  }
-
-  await setUserActive(clerkId, true);
+  await setUserActive(parsed.data.userId, true, cashierId);
   return { success: true };
 }
 
-export async function deleteUserAction(data: {
-  clerkId: string;
-}): Promise<ActionResult> {
-  const authError = await requireAdmin();
-  if (authError) return authError;
+export async function deleteUserAction(data: { userId: string }): Promise<ActionResult> {
+  const authResult = await requireAdmin();
+  if ("error" in authResult) return { success: false, error: authResult.error };
 
-  const parsed = clerkIdSchema.safeParse(data);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.issues[0].message };
-  }
+  const cashierId = await getCashierId();
+  const parsed = userIdSchema.safeParse(data);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
-  const { clerkId } = parsed.data;
+  const { userId } = parsed.data;
 
-  // Get current user's ID
-  const { userId: currentUserId } = await auth();
-
-  // Check if trying to delete self
-  if (currentUserId === clerkId) {
+  if (authResult.sessionUserId === userId) {
     return { success: false, error: "You cannot delete your own account." };
   }
 
-  // Check if trying to delete root user
-  const ROOT_USER_ID = "8bcd74e0-f9a5-4b81-a65b-7b52f1b064cc";
-  if (clerkId === ROOT_USER_ID) {
-    return { success: false, error: "Root user cannot be deleted." };
-  }
-
   const [user] = await db
-    .select({ role: users.role })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
+    .select({ role: cashierUsers.role })
+    .from(cashierUsers)
+    .where(and(eq(cashierUsers.id, userId), eq(cashierUsers.cashierId, cashierId)))
     .limit(1);
 
-  if (!user) {
-    return { success: false, error: "User not found." };
-  }
-
+  if (!user) return { success: false, error: "User not found." };
   if (user.role === "player") {
     return { success: false, error: "Player accounts cannot be deleted from here." };
   }
 
-  const res = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-    },
-  });
-
-  if (!res.ok) {
-    console.error("[deleteUserAction] Clerk API error:", await res.text());
-    return { success: false, error: "Failed to delete user. Please try again." };
-  }
-
-  await deleteUserByClerkId(clerkId);
+  await deleteUser(userId, cashierId);
   return { success: true };
 }

@@ -23,59 +23,95 @@ import { relations } from "drizzle-orm";
 // ENUMS
 // =============================================================================
 
-export const userRoleEnum = pgEnum("user_role", [
-  "admin",
-  "clerk",
-  "player",
-]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "clerk", "player"]);
 
-export const methodTypeEnum = pgEnum("method_type", [
-  "deposit",
-  "payout",
-]);
+export const methodTypeEnum = pgEnum("method_type", ["deposit", "payout"]);
 
 export const fieldTypeEnum = pgEnum("field_type", [
-  "text",          // single-line textbox
-  "textarea",      // multi-line textbox
-  "number",        // numeric input
-  "dropdown",      // select with predefined options
-  "file",          // file upload (PDF, DOC, etc.)
-  "image",         // image upload (JPG, PNG, etc.)
-  "date",          // date picker
-  "checkbox",      // boolean toggle
-  "label",         // static display text, no user input
-  "hidden_label",  // collapsible content block, toggle shows placeholder text
-  "random_list",   // shows a random value from dropdownOptions on each form load
+  "text", // single-line textbox
+  "textarea", // multi-line textbox
+  "number", // numeric input
+  "dropdown", // select with predefined options
+  "file", // file upload (PDF, DOC, etc.)
+  "image", // image upload (JPG, PNG, etc.)
+  "date", // date picker
+  "checkbox", // boolean toggle
+  "label", // static display text, no user input
+  "hidden_label", // collapsible content block, toggle shows placeholder text
+  "random_list", // shows a random value from dropdownOptions on each form load
+  "amount_list", // buttons that set the amount field value
+  "hyperlink", // clickable link opening in new tab
+  "name", // auto-assigns a locked name from the names pool
+  "address", // auto-assigns a locked address from the addresses pool
 ]);
 
 export const transactionStatusEnum = pgEnum("transaction_status", [
-  "pending",      // submitted by player, no clerk assigned
-  "in_progress",  // clerk locked and is working on it
-  "approved",     // clerk approved
-  "rejected",     // clerk rejected
-  "completed",    // fully processed and closed
-  "cancelled",    // cancelled by player before processing
+  "pending", // submitted by player, no clerk assigned (UI: pre_confirmed)
+  "in_progress", // clerk locked and is working on it
+  "approved", // clerk approved (UI: post_confirmed)
+  "rejected", // clerk rejected (UI: denied)
+  "completed", // fully processed and closed
+  "cancelled", // cancelled by player before processing
 ]);
 
 // =============================================================================
-// USERS
-// Table stores a local mirror of Clerk users so we can join with transactions,
-// audits, and reports without calling the Clerk API every time.
-// Source of truth for auth is always Clerk — this table is read-only from
-// the app's perspective (populated and updated via Clerk webhooks).
+// CASHIERS
+// Each cashier is an isolated tenant. All data is scoped to a cashier.
+// Access is via /{slug}/{token}/* routes.
 // =============================================================================
 
-export const users = pgTable(
-  "users",
+export const cashiers = pgTable(
+  "cashiers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    // Clerk's own user ID — used to link sessions to this record
-    clerkId: text("clerk_id").notNull().unique(),
+    name: text("name").notNull(), // e.g. "VRB Cashier"
+    slug: text("slug").notNull().unique(), // 3-letter code, e.g. "vrb"
+    token: text("token").notNull().unique(), // 7-char access token
+
+    logoUrl: text("logo_url"),
+    clientUrl: text("client_url"),
+    contactEmail: text("contact_email"),
+    contactPhone: text("contact_phone"),
+
+    isActive: boolean("is_active").notNull().default(true),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("cashiers_slug_idx").on(table.slug),
+    uniqueIndex("cashiers_token_idx").on(table.token),
+  ],
+);
+
+// =============================================================================
+// USERS
+// Internal auth — no Clerk dependency.
+// Login identifier is `username` (unique per cashier, stored lowercase).
+// Password is stored as a bcrypt hash.
+// =============================================================================
+
+export const cashierUsers = pgTable(
+  "cashier_users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
 
     role: userRoleEnum("role").notNull().default("player"),
 
-    email: text("email").notNull(),
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
+    // Login identifier — unique within a cashier, always stored lowercase
+    username: text("username").notNull(),
+
+    // bcrypt hash of the user's password
+    passwordHash: text("password_hash").notNull(),
+
+    // Optional — players may not provide email immediately
+    email: text("email"),
     firstName: text("first_name"),
     lastName: text("last_name"),
     avatarUrl: text("avatar_url"),
@@ -93,9 +129,14 @@ export const users = pgTable(
       .defaultNow(),
   },
   (table) => [
-    index("users_clerk_id_idx").on(table.clerkId),
-    index("users_role_idx").on(table.role),
-  ]
+    index("cashier_users_cashier_id_idx").on(table.cashierId),
+    index("cashier_users_role_idx").on(table.role),
+    // username uniqueness is enforced per cashier, not globally
+    uniqueIndex("cashier_users_username_cashier_idx").on(
+      table.cashierId,
+      table.username,
+    ),
+  ],
 );
 
 // =============================================================================
@@ -109,10 +150,15 @@ export const paymentMethods = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    name: text("name").notNull(),                    // e.g. "Bank Transfer", "USDT TRC-20"
-    type: methodTypeEnum("type").notNull(),           // "deposit" | "payout"
-    description: text("description"),                // optional instructions shown to player
-    logoUrl: text("logo_url"),                       // optional icon/logo for the method
+    // Which cashier this method belongs to
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
+    name: text("name").notNull(), // e.g. "Bank Transfer", "USDT TRC-20"
+    type: methodTypeEnum("type").notNull(), // "deposit" | "payout"
+    description: text("description"), // optional instructions shown to player
+    logoUrl: text("logo_url"), // optional icon/logo for the method
 
     isActive: boolean("is_active").notNull().default(false), // Admin must explicitly activate
 
@@ -121,7 +167,7 @@ export const paymentMethods = pgTable(
 
     createdByAdminId: uuid("created_by_admin_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => cashierUsers.id),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -131,9 +177,10 @@ export const paymentMethods = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("methods_cashier_id_idx").on(table.cashierId),
     index("methods_type_idx").on(table.type),
     index("methods_active_idx").on(table.isActive),
-  ]
+  ],
 );
 
 // =============================================================================
@@ -147,17 +194,22 @@ export const methodFields = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
+    // Denormalized cashierId for direct isolation queries without method join
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
     methodId: uuid("method_id")
       .notNull()
       .references(() => paymentMethods.id, { onDelete: "cascade" }),
 
-    label: text("label").notNull(),             // shown to the player, e.g. "Account Number"
-    placeholder: text("placeholder"),           // input hint text
+    label: text("label").notNull(), // shown to the player, e.g. "Account Number"
+    placeholder: text("placeholder"), // input hint text
     fieldType: fieldTypeEnum("field_type").notNull(),
     isRequired: boolean("is_required").notNull().default(true),
     displayOrder: integer("display_order").notNull().default(0), // controls render order
 
-    // Used when fieldType = "dropdown"
+    // Used when fieldType = "dropdown" | "random_list" | "amount_list"
     // Stored as JSON array of strings: ["Option A", "Option B", "Option C"]
     dropdownOptions: jsonb("dropdown_options"),
 
@@ -177,14 +229,23 @@ export const methodFields = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("method_fields_cashier_id_idx").on(table.cashierId),
     index("method_fields_method_id_idx").on(table.methodId),
     index("method_fields_order_idx").on(table.methodId, table.displayOrder),
-  ]
+  ],
 );
 
 // =============================================================================
 // TRANSACTIONS
 // One row per deposit or payout request submitted by a Player.
+//
+// STATUS SEMANTIC MAPPING (UI labels):
+//   pending      → "Pre-confirmed"  (player submitted)
+//   in_progress  → "In progress"    (clerk locked)
+//   approved     → "Post-confirmed" (clerk approved)
+//   rejected     → "Denied"         (clerk/admin rejected)
+//   completed    → "Completed"      (admin closed)
+//   cancelled    → "Cancelled"      (player cancelled)
 // =============================================================================
 
 export const transactions = pgTable(
@@ -192,19 +253,22 @@ export const transactions = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
+    // Which cashier this transaction belongs to
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
     // Human-readable reference shown to the player, e.g. "TXN-2024-000123"
     referenceCode: text("reference_code").notNull().unique(),
 
-    type: methodTypeEnum("type").notNull(),          // "deposit" | "payout"
+    type: methodTypeEnum("type").notNull(), // "deposit" | "payout"
 
-    status: transactionStatusEnum("status")
-      .notNull()
-      .default("pending"),
+    status: transactionStatusEnum("status").notNull().default("pending"),
 
     // Player who submitted the transaction
     playerId: uuid("player_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => cashierUsers.id),
 
     // The method chosen by the player (e.g. "Bank Transfer")
     methodId: uuid("method_id")
@@ -213,6 +277,9 @@ export const transactions = pgTable(
 
     // Monetary amount — stored as exact decimal, never float
     amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+
+    // Expected amount for validation: received amount must be <= expectedAmount
+    expectedAmount: decimal("expected_amount", { precision: 14, scale: 2 }),
 
     // Currency code, e.g. "USD", "EUR", "USDT"
     currency: text("currency").notNull().default("USD"),
@@ -223,7 +290,9 @@ export const transactions = pgTable(
     // -------------------------------------------------------------------------
 
     // Which clerk currently has this transaction locked
-    lockedByClerkId: uuid("locked_by_clerk_id").references(() => users.id),
+    lockedByClerkId: uuid("locked_by_clerk_id").references(
+      () => cashierUsers.id,
+    ),
 
     // When the lock was acquired — used to compute expiry
     lockedAt: timestamp("locked_at", { withTimezone: true }),
@@ -250,13 +319,14 @@ export const transactions = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("txn_cashier_id_idx").on(table.cashierId),
     index("txn_player_id_idx").on(table.playerId),
     index("txn_status_idx").on(table.status),
     index("txn_type_idx").on(table.type),
     index("txn_locked_by_idx").on(table.lockedByClerkId),
     index("txn_created_at_idx").on(table.createdAt),
     uniqueIndex("txn_reference_code_idx").on(table.referenceCode),
-  ]
+  ],
 );
 
 // =============================================================================
@@ -270,6 +340,10 @@ export const transactionFieldValues = pgTable(
   "transaction_field_values",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
 
     transactionId: uuid("transaction_id")
       .notNull()
@@ -298,9 +372,10 @@ export const transactionFieldValues = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("txn_field_values_cashier_id_idx").on(table.cashierId),
     index("txn_field_values_txn_id_idx").on(table.transactionId),
     index("txn_field_values_field_id_idx").on(table.methodFieldId),
-  ]
+  ],
 );
 
 // =============================================================================
@@ -316,6 +391,10 @@ export const transactionUpdates = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
     transactionId: uuid("transaction_id")
       .notNull()
       .references(() => transactions.id, { onDelete: "cascade" }),
@@ -323,7 +402,7 @@ export const transactionUpdates = pgTable(
     // Who made the change (clerk or admin)
     updatedByUserId: uuid("updated_by_user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => cashierUsers.id),
 
     previousStatus: transactionStatusEnum("previous_status").notNull(),
     newStatus: transactionStatusEnum("new_status").notNull(),
@@ -335,9 +414,7 @@ export const transactionUpdates = pgTable(
     internalNote: text("internal_note"),
 
     // Email notification tracking
-    emailSentToPlayer: boolean("email_sent_to_player")
-      .notNull()
-      .default(false),
+    emailSentToPlayer: boolean("email_sent_to_player").notNull().default(false),
     emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
     emailError: text("email_error"), // stores error message if email failed
 
@@ -346,10 +423,11 @@ export const transactionUpdates = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("txn_updates_cashier_id_idx").on(table.cashierId),
     index("txn_updates_txn_id_idx").on(table.transactionId),
     index("txn_updates_user_id_idx").on(table.updatedByUserId),
     index("txn_updates_created_at_idx").on(table.createdAt),
-  ]
+  ],
 );
 
 // =============================================================================
@@ -364,6 +442,10 @@ export const transactionAttachments = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
     transactionId: uuid("transaction_id")
       .notNull()
       .references(() => transactions.id, { onDelete: "cascade" }),
@@ -373,22 +455,23 @@ export const transactionAttachments = pgTable(
       .notNull()
       .references(() => methodFields.id),
 
-    fileName: text("file_name").notNull(),         // original filename
-    fileType: text("file_type").notNull(),          // MIME type, e.g. "image/png"
+    fileName: text("file_name").notNull(), // original filename
+    fileType: text("file_type").notNull(), // MIME type, e.g. "image/png"
     fileSizeBytes: integer("file_size_bytes"),
-    fileUrl: text("file_url").notNull(),            // URL in Vercel Blob / S3 / Cloudinary
+    fileUrl: text("file_url").notNull(), // URL in Vercel Blob / S3 / Cloudinary
 
     uploadedByPlayerId: uuid("uploaded_by_player_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => cashierUsers.id),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => [
+    index("attachments_cashier_id_idx").on(table.cashierId),
     index("attachments_txn_id_idx").on(table.transactionId),
-  ]
+  ],
 );
 
 // =============================================================================
@@ -403,16 +486,18 @@ export const auditLogs = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
+    cashierId: uuid("cashier_id").references(() => cashiers.id),
+
     // Who performed the action — null for system/webhook actions
-    actorUserId: uuid("actor_user_id").references(() => users.id),
+    actorUserId: uuid("actor_user_id").references(() => cashierUsers.id),
     actorRole: userRoleEnum("actor_role"),
 
     // What happened, e.g. "transaction.status_changed", "method.created", "user.login"
     action: text("action").notNull(),
 
     // Which entity was affected
-    entityType: text("entity_type"),   // "transaction" | "method" | "user" | "method_field"
-    entityId: uuid("entity_id"),       // ID of the affected row
+    entityType: text("entity_type"), // "transaction" | "method" | "user" | "method_field"
+    entityId: uuid("entity_id"), // ID of the affected row
 
     // Additional context as JSON — never include sensitive data (no CVV, no passwords)
     metadata: jsonb("metadata"),
@@ -426,11 +511,12 @@ export const auditLogs = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("audit_cashier_id_idx").on(table.cashierId),
     index("audit_actor_idx").on(table.actorUserId),
     index("audit_action_idx").on(table.action),
     index("audit_entity_idx").on(table.entityType, table.entityId),
     index("audit_created_at_idx").on(table.createdAt),
-  ]
+  ],
 );
 
 // =============================================================================
@@ -444,15 +530,19 @@ export const notifications = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
     // Who receives the notification
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => cashierUsers.id, { onDelete: "cascade" }),
 
     // Source event that triggered the notification
     transactionId: uuid("transaction_id").references(() => transactions.id),
     transactionUpdateId: uuid("transaction_update_id").references(
-      () => transactionUpdates.id
+      () => transactionUpdates.id,
     ),
 
     // "email" | "in_app" — extendable for future channels (SMS, push)
@@ -473,10 +563,172 @@ export const notifications = pgTable(
       .defaultNow(),
   },
   (table) => [
+    index("notif_cashier_id_idx").on(table.cashierId),
     index("notif_user_id_idx").on(table.userId),
     index("notif_unread_idx").on(table.userId, table.isRead),
     index("notif_txn_id_idx").on(table.transactionId),
-  ]
+  ],
+);
+
+// =============================================================================
+// RANDOM NAMES
+// Pool of names assigned to transactions for anonymization per cashier.
+// Lowest priority number = highest priority for assignment.
+// =============================================================================
+
+export const names = pgTable(
+  "names",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
+    value: text("value").notNull(),
+    priority: integer("priority").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+
+    // Lock system: prevents concurrent assignment of the same name
+    isLocked: boolean("is_locked").notNull().default(false),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedByTransactionId: uuid("locked_by_transaction_id").references(
+      () => transactions.id,
+      { onDelete: "set null" },
+    ),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("names_cashier_id_idx").on(table.cashierId),
+    index("names_priority_idx").on(table.cashierId, table.priority),
+    index("names_locked_idx").on(table.isLocked),
+  ],
+);
+
+// =============================================================================
+// RANDOM ADDRESSES
+// Pool of addresses assigned to transactions per cashier.
+// Same lock logic as names.
+// =============================================================================
+
+export const addresses = pgTable(
+  "addresses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id),
+
+    value: text("value").notNull(),
+    priority: integer("priority").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+
+    isLocked: boolean("is_locked").notNull().default(false),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedByTransactionId: uuid("locked_by_transaction_id").references(
+      () => transactions.id,
+      { onDelete: "set null" },
+    ),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("addresses_cashier_id_idx").on(table.cashierId),
+    index("addresses_priority_idx").on(table.cashierId, table.priority),
+    index("addresses_locked_idx").on(table.isLocked),
+  ],
+);
+
+// =============================================================================
+// MASTER SESSIONS
+// Session tokens for the /master/* routes (no Clerk, simple cookie auth).
+// =============================================================================
+
+export const masterSessions = pgTable(
+  "master_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    token: text("token").notNull().unique(),
+    // Set when master is acting inside a specific cashier tenant
+    actingCashierId: uuid("acting_cashier_id").references(() => cashiers.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("master_sessions_token_idx").on(table.token),
+    index("master_sessions_expires_at_idx").on(table.expiresAt),
+  ],
+);
+
+// =============================================================================
+// USER SESSIONS
+// Authenticated sessions for player/clerk/admin users (internal auth, no Clerk).
+// =============================================================================
+
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    token: text("token").notNull().unique(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => cashierUsers.id, { onDelete: "cascade" }),
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id, { onDelete: "cascade" }),
+    role: userRoleEnum("role").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_sessions_token_idx").on(table.token),
+    index("user_sessions_user_id_idx").on(table.userId),
+    index("user_sessions_cashier_id_idx").on(table.cashierId),
+    index("user_sessions_expires_at_idx").on(table.expiresAt),
+  ],
+);
+
+// =============================================================================
+// LOGIN ATTEMPTS
+// Audit log + rate limiting source for all login events.
+// =============================================================================
+
+export const loginAttempts = pgTable(
+  "login_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cashierId: uuid("cashier_id").references(() => cashiers.id, {
+      onDelete: "cascade",
+    }),
+    username: text("username").notNull(),
+    ipAddress: text("ip_address"),
+    success: boolean("success").notNull(),
+    // null | 'wrong_password' | 'sportsbook_invalid' | 'sportsbook_error' | 'user_inactive'
+    failureReason: text("failure_reason"),
+    sportsbookChecked: boolean("sportsbook_checked").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("login_attempts_lookup_idx").on(
+      table.cashierId,
+      table.username,
+      table.createdAt,
+    ),
+  ],
 );
 
 // =============================================================================
@@ -484,60 +736,100 @@ export const notifications = pgTable(
 // Drizzle relation definitions — used by the query builder (db.query.*)
 // =============================================================================
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const cashiersRelations = relations(cashiers, ({ many }) => ({
+  cashierUsers: many(cashierUsers),
+  paymentMethods: many(paymentMethods),
+  methodFields: many(methodFields),
   transactions: many(transactions),
+  transactionFieldValues: many(transactionFieldValues),
   transactionUpdates: many(transactionUpdates),
+  transactionAttachments: many(transactionAttachments),
   auditLogs: many(auditLogs),
   notifications: many(notifications),
-  createdMethods: many(paymentMethods),
+  names: many(names),
+  addresses: many(addresses),
 }));
+
+export const cashierUsersRelations = relations(
+  cashierUsers,
+  ({ one, many }) => ({
+    cashier: one(cashiers, {
+      fields: [cashierUsers.cashierId],
+      references: [cashiers.id],
+    }),
+    transactions: many(transactions),
+    transactionUpdates: many(transactionUpdates),
+    auditLogs: many(auditLogs),
+    notifications: many(notifications),
+    createdMethods: many(paymentMethods),
+  }),
+);
 
 export const paymentMethodsRelations = relations(
   paymentMethods,
   ({ one, many }) => ({
-    createdBy: one(users, {
+    cashier: one(cashiers, {
+      fields: [paymentMethods.cashierId],
+      references: [cashiers.id],
+    }),
+    createdBy: one(cashierUsers, {
       fields: [paymentMethods.createdByAdminId],
-      references: [users.id],
+      references: [cashierUsers.id],
     }),
     fields: many(methodFields),
     transactions: many(transactions),
-  })
+  }),
 );
 
-export const methodFieldsRelations = relations(methodFields, ({ one, many }) => ({
-  method: one(paymentMethods, {
-    fields: [methodFields.methodId],
-    references: [paymentMethods.id],
+export const methodFieldsRelations = relations(
+  methodFields,
+  ({ one, many }) => ({
+    cashier: one(cashiers, {
+      fields: [methodFields.cashierId],
+      references: [cashiers.id],
+    }),
+    method: one(paymentMethods, {
+      fields: [methodFields.methodId],
+      references: [paymentMethods.id],
+    }),
+    fieldValues: many(transactionFieldValues),
+    attachments: many(transactionAttachments),
   }),
-  fieldValues: many(transactionFieldValues),
-  attachments: many(transactionAttachments),
-}));
+);
 
 export const transactionsRelations = relations(
   transactions,
   ({ one, many }) => ({
-    player: one(users, {
+    cashier: one(cashiers, {
+      fields: [transactions.cashierId],
+      references: [cashiers.id],
+    }),
+    player: one(cashierUsers, {
       fields: [transactions.playerId],
-      references: [users.id],
+      references: [cashierUsers.id],
     }),
     method: one(paymentMethods, {
       fields: [transactions.methodId],
       references: [paymentMethods.id],
     }),
-    lockedByClerk: one(users, {
+    lockedByClerk: one(cashierUsers, {
       fields: [transactions.lockedByClerkId],
-      references: [users.id],
+      references: [cashierUsers.id],
     }),
     fieldValues: many(transactionFieldValues),
     updates: many(transactionUpdates),
     attachments: many(transactionAttachments),
     notifications: many(notifications),
-  })
+  }),
 );
 
 export const transactionFieldValuesRelations = relations(
   transactionFieldValues,
   ({ one }) => ({
+    cashier: one(cashiers, {
+      fields: [transactionFieldValues.cashierId],
+      references: [cashiers.id],
+    }),
     transaction: one(transactions, {
       fields: [transactionFieldValues.transactionId],
       references: [transactions.id],
@@ -546,26 +838,34 @@ export const transactionFieldValuesRelations = relations(
       fields: [transactionFieldValues.methodFieldId],
       references: [methodFields.id],
     }),
-  })
+  }),
 );
 
 export const transactionUpdatesRelations = relations(
   transactionUpdates,
   ({ one }) => ({
+    cashier: one(cashiers, {
+      fields: [transactionUpdates.cashierId],
+      references: [cashiers.id],
+    }),
     transaction: one(transactions, {
       fields: [transactionUpdates.transactionId],
       references: [transactions.id],
     }),
-    updatedBy: one(users, {
+    updatedBy: one(cashierUsers, {
       fields: [transactionUpdates.updatedByUserId],
-      references: [users.id],
+      references: [cashierUsers.id],
     }),
-  })
+  }),
 );
 
 export const transactionAttachmentsRelations = relations(
   transactionAttachments,
   ({ one }) => ({
+    cashier: one(cashiers, {
+      fields: [transactionAttachments.cashierId],
+      references: [cashiers.id],
+    }),
     transaction: one(transactions, {
       fields: [transactionAttachments.transactionId],
       references: [transactions.id],
@@ -574,24 +874,32 @@ export const transactionAttachmentsRelations = relations(
       fields: [transactionAttachments.methodFieldId],
       references: [methodFields.id],
     }),
-    uploadedBy: one(users, {
+    uploadedBy: one(cashierUsers, {
       fields: [transactionAttachments.uploadedByPlayerId],
-      references: [users.id],
+      references: [cashierUsers.id],
     }),
-  })
+  }),
 );
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
-  actor: one(users, {
+  cashier: one(cashiers, {
+    fields: [auditLogs.cashierId],
+    references: [cashiers.id],
+  }),
+  actor: one(cashierUsers, {
     fields: [auditLogs.actorUserId],
-    references: [users.id],
+    references: [cashierUsers.id],
   }),
 }));
 
 export const notificationsRelations = relations(notifications, ({ one }) => ({
-  user: one(users, {
+  cashier: one(cashiers, {
+    fields: [notifications.cashierId],
+    references: [cashiers.id],
+  }),
+  user: one(cashierUsers, {
     fields: [notifications.userId],
-    references: [users.id],
+    references: [cashierUsers.id],
   }),
   transaction: one(transactions, {
     fields: [notifications.transactionId],
@@ -603,13 +911,38 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   }),
 }));
 
+export const namesRelations = relations(names, ({ one }) => ({
+  cashier: one(cashiers, {
+    fields: [names.cashierId],
+    references: [cashiers.id],
+  }),
+  lockedByTransaction: one(transactions, {
+    fields: [names.lockedByTransactionId],
+    references: [transactions.id],
+  }),
+}));
+
+export const addressesRelations = relations(addresses, ({ one }) => ({
+  cashier: one(cashiers, {
+    fields: [addresses.cashierId],
+    references: [cashiers.id],
+  }),
+  lockedByTransaction: one(transactions, {
+    fields: [addresses.lockedByTransactionId],
+    references: [transactions.id],
+  }),
+}));
+
 // =============================================================================
 // TYPE EXPORTS
 // Inferred TypeScript types for use across the app.
 // =============================================================================
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
+export type Cashier = typeof cashiers.$inferSelect;
+export type NewCashier = typeof cashiers.$inferInsert;
+
+export type CashierUser = typeof cashierUsers.$inferSelect;
+export type NewCashierUser = typeof cashierUsers.$inferInsert;
 
 export type PaymentMethod = typeof paymentMethods.$inferSelect;
 export type NewPaymentMethod = typeof paymentMethods.$inferInsert;
@@ -621,16 +954,27 @@ export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 
 export type TransactionFieldValue = typeof transactionFieldValues.$inferSelect;
-export type NewTransactionFieldValue = typeof transactionFieldValues.$inferInsert;
+export type NewTransactionFieldValue =
+  typeof transactionFieldValues.$inferInsert;
 
 export type TransactionUpdate = typeof transactionUpdates.$inferSelect;
 export type NewTransactionUpdate = typeof transactionUpdates.$inferInsert;
 
 export type TransactionAttachment = typeof transactionAttachments.$inferSelect;
-export type NewTransactionAttachment = typeof transactionAttachments.$inferInsert;
+export type NewTransactionAttachment =
+  typeof transactionAttachments.$inferInsert;
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
 
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
+
+export type Name = typeof names.$inferSelect;
+export type NewName = typeof names.$inferInsert;
+
+export type Address = typeof addresses.$inferSelect;
+export type NewAddress = typeof addresses.$inferInsert;
+
+export type MasterSession = typeof masterSessions.$inferSelect;
+export type NewMasterSession = typeof masterSessions.$inferInsert;

@@ -31,7 +31,10 @@ type FieldType =
   | "checkbox"
   | "label"
   | "hidden_label"
-  | "random_list";
+  | "random_list"
+  | "hyperlink"
+  | "name"
+  | "address";
 
 type FieldDef = {
   id: string;
@@ -57,7 +60,14 @@ const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   label: "Label",
   hidden_label: "Hidden Label",
   random_list: "Random List",
+  hyperlink: "Hyperlink",
+  name: "Name",
+  address: "Address",
 };
+
+const NO_INPUT_TYPES: FieldType[] = ["label", "hidden_label", "random_list", "name", "address"];
+const SYSTEM_ONLY_TYPES: FieldType[] = ["name", "address"];
+const COMING_SOON_TYPES: FieldType[] = ["name", "address"];
 
 const EXTENSION_OPTIONS = ["jpg", "jpeg", "png", "pdf", "webp", "gif"];
 
@@ -91,7 +101,264 @@ function newField(order: number): FieldDef {
   };
 }
 
-export function EditMethodForm({ method }: { method: MethodWithFields }) {
+function FieldEditor({
+  draftField,
+  setDraftField,
+  newOption,
+  setNewOption,
+  showValidation,
+  setShowValidation,
+  onCommit,
+  onCancel,
+  commitLabel,
+  fieldId,
+}: {
+  draftField: FieldDef;
+  setDraftField: React.Dispatch<React.SetStateAction<FieldDef>>;
+  newOption: string;
+  setNewOption: (v: string) => void;
+  showValidation: boolean;
+  setShowValidation: (v: boolean) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  commitLabel: string;
+  fieldId?: string;
+}) {
+  const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
+  const isNoInput = NO_INPUT_TYPES.includes(draftField.fieldType);
+  const isHyperlink = draftField.fieldType === "hyperlink";
+
+  function addDropdownOption() {
+    if (!newOption.trim()) return;
+    setDraftField((prev) => ({ ...prev, dropdownOptions: [...prev.dropdownOptions, newOption.trim()] }));
+    setNewOption("");
+  }
+
+  function removeDropdownOption(opt: string) {
+    setDraftField((prev) => ({ ...prev, dropdownOptions: prev.dropdownOptions.filter((o) => o !== opt) }));
+  }
+
+  function toggleExtension(ext: string) {
+    setDraftField((prev) => {
+      const exts = prev.fileConfig.allowedExtensions;
+      return {
+        ...prev,
+        fileConfig: {
+          ...prev.fileConfig,
+          allowedExtensions: exts.includes(ext) ? exts.filter((e) => e !== ext) : [...exts, ext],
+        },
+      };
+    });
+  }
+
+  return (
+    <div className="rounded border p-4 space-y-3 bg-muted/30">
+      {/* System fields info box */}
+      {isSystem ? (
+        <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-3 space-y-1">
+          <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+            {FIELD_TYPE_LABELS[draftField.fieldType]} field
+          </p>
+          <p className="text-xs text-blue-700 dark:text-blue-400">
+            {draftField.fieldType === "name"
+              ? "When a player opens this method, the system will automatically assign and display the next available name from the Names pool. The name is locked to this session and released if the player leaves without submitting."
+              : "When a player opens this method, the system will automatically assign and display the next available address from the Addresses pool. The address is locked to this session and released if the player leaves without submitting."}
+          </p>
+        </div>
+      ) : (
+        <div className={`grid gap-3 ${draftField.fieldType === "label" ? "grid-cols-1" : "grid-cols-2"}`}>
+          <div className="space-y-1">
+            <Label>
+              {draftField.fieldType === "hidden_label" ? "Toggle Label *" : "Label *"}
+            </Label>
+            <Input
+              value={draftField.label}
+              onChange={(e) => setDraftField((prev) => ({ ...prev, label: e.target.value }))}
+              placeholder={
+                draftField.fieldType === "hidden_label"
+                  ? 'e.g. "See more"'
+                  : draftField.fieldType === "hyperlink"
+                  ? "e.g. Visit our website"
+                  : "e.g. Card Number"
+              }
+            />
+          </div>
+          {draftField.fieldType !== "label" && (
+            <div className="space-y-1">
+              <Label>
+                {draftField.fieldType === "hidden_label"
+                  ? "Content (shown when expanded)"
+                  : draftField.fieldType === "hyperlink"
+                  ? "URL *"
+                  : "Placeholder"}
+              </Label>
+              {draftField.fieldType === "hidden_label" ? (
+                <textarea
+                  value={draftField.placeholder}
+                  onChange={(e) => setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))}
+                  rows={8}
+                  placeholder="Enter the full text content that will be shown when expanded…"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+                />
+              ) : (
+                <Input
+                  value={draftField.placeholder}
+                  onChange={(e) => setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))}
+                  placeholder={draftField.fieldType === "hyperlink" ? "https://example.com" : "Optional hint text"}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Field type selector */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Field Type</Label>
+          <Select
+            value={draftField.fieldType}
+            onValueChange={(v) =>
+              setDraftField((prev) => ({
+                ...prev,
+                fieldType: v as FieldType,
+                isRequired: NO_INPUT_TYPES.includes(v as FieldType) || v === "hyperlink" ? false : prev.isRequired,
+              }))
+            }
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.entries(FIELD_TYPE_LABELS) as [FieldType, string][]).map(([val, lbl]) => (
+                <SelectItem key={val} value={val} disabled={COMING_SOON_TYPES.includes(val)}>
+                  {COMING_SOON_TYPES.includes(val) ? `${lbl} (coming soon)` : lbl}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {!isNoInput && !isHyperlink && (
+          <div className="flex items-center gap-2 pt-6">
+            <input
+              type="checkbox"
+              id={fieldId ? `isRequired-${fieldId}` : "isRequired"}
+              checked={draftField.isRequired}
+              onChange={(e) => setDraftField((prev) => ({ ...prev, isRequired: e.target.checked }))}
+              className="h-4 w-4"
+            />
+            <Label htmlFor={fieldId ? `isRequired-${fieldId}` : "isRequired"}>Required</Label>
+          </div>
+        )}
+      </div>
+
+      {/* Random list values */}
+      {draftField.fieldType === "random_list" && (
+        <div className="space-y-2">
+          <Label>List Values</Label>
+          <p className="text-xs text-muted-foreground">One will be picked at random each time a player opens this form.</p>
+          <div className="flex gap-2">
+            <Input
+              value={newOption}
+              onChange={(e) => setNewOption(e.target.value)}
+              placeholder="Add value (e.g. Bitcoin address)"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDropdownOption(); } }}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={addDropdownOption}>Add</Button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {draftField.dropdownOptions.map((opt) => (
+              <Badge key={opt} variant="secondary" className="gap-1 font-mono text-xs">
+                {opt}
+                <button type="button" onClick={() => removeDropdownOption(opt)} className="text-xs hover:text-destructive">✕</button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Dropdown options */}
+      {draftField.fieldType === "dropdown" && (
+        <div className="space-y-2">
+          <Label>Dropdown Options</Label>
+          <div className="flex gap-2">
+            <Input
+              value={newOption}
+              onChange={(e) => setNewOption(e.target.value)}
+              placeholder="Add option"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDropdownOption(); } }}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={addDropdownOption}>Add</Button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {draftField.dropdownOptions.map((opt) => (
+              <Badge key={opt} variant="secondary" className="gap-1">
+                {opt}
+                <button type="button" onClick={() => removeDropdownOption(opt)} className="text-xs hover:text-destructive">✕</button>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* File / Image config */}
+      {(draftField.fieldType === "file" || draftField.fieldType === "image") && (
+        <div className="space-y-2">
+          <Label>File Config</Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-sm whitespace-nowrap">Max size (MB)</Label>
+            <Input
+              type="number" min={1} max={50}
+              value={draftField.fileConfig.maxSizeMb}
+              onChange={(e) => setDraftField((prev) => ({ ...prev, fileConfig: { ...prev.fileConfig, maxSizeMb: Number(e.target.value) } }))}
+              className="w-20"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {EXTENSION_OPTIONS.map((ext) => (
+              <label key={ext} className="flex items-center gap-1 text-sm">
+                <input type="checkbox" checked={draftField.fileConfig.allowedExtensions.includes(ext)} onChange={() => toggleExtension(ext)} className="h-3 w-3" />
+                {ext}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Validation rules */}
+      {!isNoInput && !isHyperlink && (
+        <div>
+          <button type="button" className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setShowValidation(!showValidation)}>
+            {showValidation ? "▼" : "▶"} Validation Rules (optional)
+          </button>
+          {showValidation && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {(draftField.fieldType === "text" || draftField.fieldType === "textarea") && (
+                <>
+                  <div className="space-y-1"><Label className="text-xs">Min length</Label><Input type="number" min={0} value={draftField.validationRules.minLength ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, minLength: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
+                  <div className="space-y-1"><Label className="text-xs">Max length</Label><Input type="number" min={0} value={draftField.validationRules.maxLength ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, maxLength: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
+                  <div className="col-span-2 space-y-1"><Label className="text-xs">Pattern (regex)</Label><Input value={draftField.validationRules.pattern ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, pattern: e.target.value || undefined } }))} placeholder="e.g. ^[0-9]{16}$" /></div>
+                </>
+              )}
+              {draftField.fieldType === "number" && (
+                <>
+                  <div className="space-y-1"><Label className="text-xs">Min value</Label><Input type="number" value={draftField.validationRules.min ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, min: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
+                  <div className="space-y-1"><Label className="text-xs">Max value</Label><Input type="number" value={draftField.validationRules.max ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, max: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Separator />
+      <div className="flex gap-2">
+        <Button type="button" size="sm" onClick={onCommit}>{commitLabel}</Button>
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+export function EditMethodForm({ method, successRedirect }: { method: MethodWithFields; successRedirect?: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,16 +407,22 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
     setAddingField(true);
   }
 
-  function commitField() {
-    if (!draftField.label.trim()) return;
-    if (editingFieldId) {
-      setFields((prev) =>
-        prev.map((f) => (f.id === editingFieldId ? { ...draftField, displayOrder: f.displayOrder } : f))
-      );
-      setEditingFieldId(null);
-    } else {
-      setFields((prev) => [...prev, { ...draftField, displayOrder: prev.length }]);
-    }
+  function commitAddField() {
+    const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
+    if (!isSystem && !draftField.label.trim()) return;
+    const label = isSystem ? FIELD_TYPE_LABELS[draftField.fieldType] : draftField.label;
+    setFields((prev) => [...prev, { ...draftField, label, displayOrder: prev.length }]);
+    setAddingField(false);
+  }
+
+  function commitEditField() {
+    const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
+    if (!isSystem && !draftField.label.trim()) return;
+    const label = isSystem ? FIELD_TYPE_LABELS[draftField.fieldType] : draftField.label;
+    setFields((prev) =>
+      prev.map((f) => (f.id === editingFieldId ? { ...draftField, label, displayOrder: f.displayOrder } : f))
+    );
+    setEditingFieldId(null);
     setAddingField(false);
   }
 
@@ -165,29 +438,6 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
     if (target < 0 || target >= newFields.length) return;
     [newFields[index], newFields[target]] = [newFields[target], newFields[index]];
     setFields(newFields.map((f, i) => ({ ...f, displayOrder: i })));
-  }
-
-  function addDropdownOption() {
-    if (!newOption.trim()) return;
-    setDraftField((prev) => ({ ...prev, dropdownOptions: [...prev.dropdownOptions, newOption.trim()] }));
-    setNewOption("");
-  }
-
-  function removeDropdownOption(opt: string) {
-    setDraftField((prev) => ({ ...prev, dropdownOptions: prev.dropdownOptions.filter((o) => o !== opt) }));
-  }
-
-  function toggleExtension(ext: string) {
-    setDraftField((prev) => {
-      const exts = prev.fileConfig.allowedExtensions;
-      return {
-        ...prev,
-        fileConfig: {
-          ...prev.fileConfig,
-          allowedExtensions: exts.includes(ext) ? exts.filter((e) => e !== ext) : [...exts, ext],
-        },
-      };
-    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -215,13 +465,8 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
     });
 
     setPending(false);
-
-    if (!result.success) {
-      setError(result.error);
-      return;
-    }
-
-    router.push(`/admin/methods?type=${type}`);
+    if (!result.success) { setError(result.error); return; }
+    router.push(successRedirect ?? `/admin/methods?type=${type}`);
   }
 
   return (
@@ -272,148 +517,21 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
           {fields.length > 0 && (
             <div className="space-y-2">
               {fields.map((field, index) => {
-                const isEditing = editingFieldId === field.id;
-                if (isEditing) {
+                if (editingFieldId === field.id) {
                   return (
-                    <div key={field.id} className="rounded border p-4 space-y-3 bg-muted/30">
-                      <div className={`grid gap-3 ${draftField.fieldType === "label" ? "grid-cols-1" : "grid-cols-2"}`}>
-                        <div className="space-y-1">
-                          <Label>{draftField.fieldType === "hidden_label" ? "Toggle Label *" : "Label *"}</Label>
-                          <Input
-                            value={draftField.label}
-                            onChange={(e) => setDraftField((prev) => ({ ...prev, label: e.target.value }))}
-                            placeholder={draftField.fieldType === "hidden_label" ? 'e.g. "See more"' : "e.g. Card Number"}
-                          />
-                        </div>
-                        {draftField.fieldType !== "label" && (
-                          <div className="space-y-1">
-                            <Label>{draftField.fieldType === "hidden_label" ? "Content (shown when expanded)" : "Placeholder"}</Label>
-                            {draftField.fieldType === "hidden_label" ? (
-                              <textarea
-                                value={draftField.placeholder}
-                                onChange={(e) => setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))}
-                                rows={8}
-                                placeholder="Enter the full text content that will be shown when expanded…"
-                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
-                              />
-                            ) : (
-                              <Input value={draftField.placeholder} onChange={(e) => setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))} placeholder="Optional hint text" />
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label>Field Type</Label>
-                          <Select
-                            value={draftField.fieldType}
-                            onValueChange={(v) =>
-                              setDraftField((prev) => ({
-                                ...prev,
-                                fieldType: v as FieldType,
-                                isRequired: (v === "label" || v === "hidden_label" || v === "random_list") ? false : prev.isRequired,
-                              }))
-                            }
-                          >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {(Object.entries(FIELD_TYPE_LABELS) as [FieldType, string][]).map(([val, lbl]) => (
-                                <SelectItem key={val} value={val}>{lbl}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label" || draftField.fieldType === "random_list") && (
-                          <div className="flex items-center gap-2 pt-6">
-                            <input type="checkbox" id={`editIsRequired-${field.id}`} checked={draftField.isRequired} onChange={(e) => setDraftField((prev) => ({ ...prev, isRequired: e.target.checked }))} className="h-4 w-4" />
-                            <Label htmlFor={`editIsRequired-${field.id}`}>Required</Label>
-                          </div>
-                        )}
-                      </div>
-                      {draftField.fieldType === "random_list" && (
-                        <div className="space-y-2">
-                          <Label>List Values</Label>
-                          <p className="text-xs text-muted-foreground">
-                            One will be picked at random each time a player opens this form.
-                          </p>
-                          <div className="flex gap-2">
-                            <Input value={newOption} onChange={(e) => setNewOption(e.target.value)} placeholder="Add value (e.g. Bitcoin address)" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDropdownOption(); } }} />
-                            <Button type="button" variant="outline" size="sm" onClick={addDropdownOption}>Add</Button>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {draftField.dropdownOptions.map((opt) => (
-                              <Badge key={opt} variant="secondary" className="gap-1 font-mono text-xs">
-                                {opt}
-                                <button type="button" onClick={() => removeDropdownOption(opt)} className="text-xs hover:text-destructive">✕</button>
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {draftField.fieldType === "dropdown" && (
-                        <div className="space-y-2">
-                          <Label>Dropdown Options</Label>
-                          <div className="flex gap-2">
-                            <Input value={newOption} onChange={(e) => setNewOption(e.target.value)} placeholder="Add option" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDropdownOption(); } }} />
-                            <Button type="button" variant="outline" size="sm" onClick={addDropdownOption}>Add</Button>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {draftField.dropdownOptions.map((opt) => (
-                              <Badge key={opt} variant="secondary" className="gap-1">
-                                {opt}
-                                <button type="button" onClick={() => removeDropdownOption(opt)} className="text-xs hover:text-destructive">✕</button>
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {(draftField.fieldType === "file" || draftField.fieldType === "image") && (
-                        <div className="space-y-2">
-                          <Label>File Config</Label>
-                          <div className="flex items-center gap-2">
-                            <Label className="text-sm whitespace-nowrap">Max size (MB)</Label>
-                            <Input type="number" min={1} max={50} value={draftField.fileConfig.maxSizeMb} onChange={(e) => setDraftField((prev) => ({ ...prev, fileConfig: { ...prev.fileConfig, maxSizeMb: Number(e.target.value) } }))} className="w-20" />
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {EXTENSION_OPTIONS.map((ext) => (
-                              <label key={ext} className="flex items-center gap-1 text-sm">
-                                <input type="checkbox" checked={draftField.fileConfig.allowedExtensions.includes(ext)} onChange={() => toggleExtension(ext)} className="h-3 w-3" />
-                                {ext}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label" || draftField.fieldType === "random_list") && (
-                        <div>
-                          <button type="button" className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setShowValidation((v) => !v)}>
-                            {showValidation ? "▼" : "▶"} Validation Rules (optional)
-                          </button>
-                          {showValidation && (
-                            <div className="mt-2 grid grid-cols-2 gap-2">
-                              {(draftField.fieldType === "text" || draftField.fieldType === "textarea") && (
-                                <>
-                                  <div className="space-y-1"><Label className="text-xs">Min length</Label><Input type="number" min={0} value={draftField.validationRules.minLength ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, minLength: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                                  <div className="space-y-1"><Label className="text-xs">Max length</Label><Input type="number" min={0} value={draftField.validationRules.maxLength ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, maxLength: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                                  <div className="col-span-2 space-y-1"><Label className="text-xs">Pattern (regex)</Label><Input value={draftField.validationRules.pattern ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, pattern: e.target.value || undefined } }))} placeholder="e.g. ^[0-9]{16}$" /></div>
-                                </>
-                              )}
-                              {draftField.fieldType === "number" && (
-                                <>
-                                  <div className="space-y-1"><Label className="text-xs">Min value</Label><Input type="number" value={draftField.validationRules.min ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, min: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                                  <div className="space-y-1"><Label className="text-xs">Max value</Label><Input type="number" value={draftField.validationRules.max ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, max: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <Separator />
-                      <div className="flex gap-2">
-                        <Button type="button" size="sm" onClick={commitField}>Save Changes</Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => { setAddingField(false); setEditingFieldId(null); }}>Cancel</Button>
-                      </div>
-                    </div>
+                    <FieldEditor
+                      key={field.id}
+                      draftField={draftField}
+                      setDraftField={setDraftField}
+                      newOption={newOption}
+                      setNewOption={setNewOption}
+                      showValidation={showValidation}
+                      setShowValidation={setShowValidation}
+                      onCommit={commitEditField}
+                      onCancel={() => { setAddingField(false); setEditingFieldId(null); }}
+                      commitLabel="Save Changes"
+                      fieldId={field.id}
+                    />
                   );
                 }
                 return (
@@ -421,7 +539,7 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
                     <div className="flex-1 min-w-0">
                       <span className="font-medium text-sm">{field.label}</span>
                       <div className="flex gap-1 mt-1">
-                        <Badge variant="outline" className="text-xs">{FIELD_TYPE_LABELS[field.fieldType]}</Badge>
+                        <Badge variant="outline" className="text-xs">{FIELD_TYPE_LABELS[field.fieldType] ?? field.fieldType}</Badge>
                         {field.isRequired && <Badge variant="secondary" className="text-xs">Required</Badge>}
                       </div>
                     </div>
@@ -442,152 +560,17 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
           )}
 
           {addingField && !editingFieldId ? (
-            <div className="rounded border p-4 space-y-3 bg-muted/30">
-              <div className={`grid gap-3 ${draftField.fieldType === "label" ? "grid-cols-1" : "grid-cols-2"}`}>
-                <div className="space-y-1">
-                  <Label>
-                    {draftField.fieldType === "hidden_label" ? "Toggle Label *" : "Label *"}
-                  </Label>
-                  <Input
-                    value={draftField.label}
-                    onChange={(e) => setDraftField((prev) => ({ ...prev, label: e.target.value }))}
-                    placeholder={draftField.fieldType === "hidden_label" ? 'e.g. "See more"' : "e.g. Card Number"}
-                  />
-                </div>
-                {draftField.fieldType !== "label" && (
-                  <div className="space-y-1">
-                    <Label>
-                      {draftField.fieldType === "hidden_label" ? "Content (shown when expanded)" : "Placeholder"}
-                    </Label>
-                    {draftField.fieldType === "hidden_label" ? (
-                      <textarea
-                        value={draftField.placeholder}
-                        onChange={(e) => setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))}
-                        rows={8}
-                        placeholder="Enter the full text content that will be shown when expanded…"
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
-                      />
-                    ) : (
-                      <Input value={draftField.placeholder} onChange={(e) => setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))} placeholder="Optional hint text" />
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label>Field Type</Label>
-                  <Select
-                    value={draftField.fieldType}
-                    onValueChange={(v) =>
-                      setDraftField((prev) => ({
-                        ...prev,
-                        fieldType: v as FieldType,
-                        isRequired: (v === "label" || v === "hidden_label" || v === "random_list") ? false : prev.isRequired,
-                      }))
-                    }
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {(Object.entries(FIELD_TYPE_LABELS) as [FieldType, string][]).map(([val, lbl]) => (
-                        <SelectItem key={val} value={val}>{lbl}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label" || draftField.fieldType === "random_list") && (
-                  <div className="flex items-center gap-2 pt-6">
-                    <input type="checkbox" id="editIsRequired" checked={draftField.isRequired} onChange={(e) => setDraftField((prev) => ({ ...prev, isRequired: e.target.checked }))} className="h-4 w-4" />
-                    <Label htmlFor="editIsRequired">Required</Label>
-                  </div>
-                )}
-              </div>
-
-              {draftField.fieldType === "random_list" && (
-                <div className="space-y-2">
-                  <Label>List Values</Label>
-                  <p className="text-xs text-muted-foreground">
-                    One will be picked at random each time a player opens this form.
-                  </p>
-                  <div className="flex gap-2">
-                    <Input value={newOption} onChange={(e) => setNewOption(e.target.value)} placeholder="Add value (e.g. Bitcoin address)" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDropdownOption(); } }} />
-                    <Button type="button" variant="outline" size="sm" onClick={addDropdownOption}>Add</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {draftField.dropdownOptions.map((opt) => (
-                      <Badge key={opt} variant="secondary" className="gap-1 font-mono text-xs">
-                        {opt}
-                        <button type="button" onClick={() => removeDropdownOption(opt)} className="text-xs hover:text-destructive">✕</button>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {draftField.fieldType === "dropdown" && (
-                <div className="space-y-2">
-                  <Label>Dropdown Options</Label>
-                  <div className="flex gap-2">
-                    <Input value={newOption} onChange={(e) => setNewOption(e.target.value)} placeholder="Add option" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDropdownOption(); } }} />
-                    <Button type="button" variant="outline" size="sm" onClick={addDropdownOption}>Add</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {draftField.dropdownOptions.map((opt) => (
-                      <Badge key={opt} variant="secondary" className="gap-1">
-                        {opt}
-                        <button type="button" onClick={() => removeDropdownOption(opt)} className="text-xs hover:text-destructive">✕</button>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {(draftField.fieldType === "file" || draftField.fieldType === "image") && (
-                <div className="space-y-2">
-                  <Label>File Config</Label>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm whitespace-nowrap">Max size (MB)</Label>
-                    <Input type="number" min={1} max={50} value={draftField.fileConfig.maxSizeMb} onChange={(e) => setDraftField((prev) => ({ ...prev, fileConfig: { ...prev.fileConfig, maxSizeMb: Number(e.target.value) } }))} className="w-20" />
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {EXTENSION_OPTIONS.map((ext) => (
-                      <label key={ext} className="flex items-center gap-1 text-sm">
-                        <input type="checkbox" checked={draftField.fileConfig.allowedExtensions.includes(ext)} onChange={() => toggleExtension(ext)} className="h-3 w-3" />
-                        {ext}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!(draftField.fieldType === "label" || draftField.fieldType === "hidden_label" || draftField.fieldType === "random_list") && <div>
-                <button type="button" className="text-sm text-muted-foreground hover:text-foreground" onClick={() => setShowValidation((v) => !v)}>
-                  {showValidation ? "▼" : "▶"} Validation Rules (optional)
-                </button>
-                {showValidation && (
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    {(draftField.fieldType === "text" || draftField.fieldType === "textarea") && (
-                      <>
-                        <div className="space-y-1"><Label className="text-xs">Min length</Label><Input type="number" min={0} value={draftField.validationRules.minLength ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, minLength: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                        <div className="space-y-1"><Label className="text-xs">Max length</Label><Input type="number" min={0} value={draftField.validationRules.maxLength ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, maxLength: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                        <div className="col-span-2 space-y-1"><Label className="text-xs">Pattern (regex)</Label><Input value={draftField.validationRules.pattern ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, pattern: e.target.value || undefined } }))} placeholder="e.g. ^[0-9]{16}$" /></div>
-                      </>
-                    )}
-                    {draftField.fieldType === "number" && (
-                      <>
-                        <div className="space-y-1"><Label className="text-xs">Min value</Label><Input type="number" value={draftField.validationRules.min ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, min: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                        <div className="space-y-1"><Label className="text-xs">Max value</Label><Input type="number" value={draftField.validationRules.max ?? ""} onChange={(e) => setDraftField((prev) => ({ ...prev, validationRules: { ...prev.validationRules, max: e.target.value ? Number(e.target.value) : undefined } }))} /></div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>}
-
-              <Separator />
-              <div className="flex gap-2">
-                <Button type="button" size="sm" onClick={commitField}>Add Field</Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => { setAddingField(false); setEditingFieldId(null); }}>Cancel</Button>
-              </div>
-            </div>
+            <FieldEditor
+              draftField={draftField}
+              setDraftField={setDraftField}
+              newOption={newOption}
+              setNewOption={setNewOption}
+              showValidation={showValidation}
+              setShowValidation={setShowValidation}
+              onCommit={commitAddField}
+              onCancel={() => { setAddingField(false); setEditingFieldId(null); }}
+              commitLabel="Add Field"
+            />
           ) : !editingFieldId && (
             <Button type="button" variant="outline" onClick={startAddField}>+ Add Field</Button>
           )}
@@ -611,7 +594,7 @@ export function EditMethodForm({ method }: { method: MethodWithFields }) {
         <Button type="submit" disabled={pending || logoUploading}>
           {pending ? "Saving…" : "Save Changes"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.push(`/admin/methods?type=${type}`)}>
+        <Button type="button" variant="outline" onClick={() => router.push(successRedirect ?? `/admin/methods?type=${type}`)}>
           Cancel
         </Button>
       </div>
