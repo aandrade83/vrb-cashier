@@ -17,21 +17,29 @@ function getMasterCredentials(): { email: string; password: string } {
   const email = process.env.MASTER_EMAIL;
   const password = process.env.MASTER_PASSWORD;
   if (!email || !password) {
-    throw new Error("MASTER_EMAIL and MASTER_PASSWORD environment variables must be set.");
+    throw new Error(
+      "MASTER_EMAIL and MASTER_PASSWORD environment variables must be set.",
+    );
   }
   return { email, password };
 }
 
 // Supports both plaintext and bcrypt-hashed MASTER_PASSWORD env var.
 // To migrate: set MASTER_PASSWORD to the bcrypt hash of the real password.
-async function comparePassword(plain: string, stored: string): Promise<boolean> {
+async function comparePassword(
+  plain: string,
+  stored: string,
+): Promise<boolean> {
   if (stored.startsWith("$2")) {
     return bcrypt.compare(plain, stored);
   }
   return plain === stored;
 }
 
-export async function verifyMasterCredentials(email: string, password: string): Promise<boolean> {
+export async function verifyMasterCredentials(
+  email: string,
+  password: string,
+): Promise<boolean> {
   const creds = getMasterCredentials();
   if (email !== creds.email) return false;
   return comparePassword(password, creds.password);
@@ -44,12 +52,28 @@ export async function verifyMasterPassword(password: string): Promise<boolean> {
 
 export async function createMasterSession(): Promise<string> {
   const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1000);
+  const expiresAt = new Date(
+    Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1000,
+  );
 
   await db.insert(masterSessions).values({ token, expiresAt });
 
   return token;
 }
+
+/*export async function validateMasterSession(token: string): Promise<boolean> {
+  if (!token) return false;
+
+  const [session] = await db
+    .select()
+    .from(masterSessions)
+    .where(eq(masterSessions.token, token))
+    .limit(1);
+
+  if (!session) return false;
+
+  return session.expiresAt > new Date();
+}*/
 
 export async function validateMasterSession(token: string): Promise<boolean> {
   if (!token) return false;
@@ -62,11 +86,17 @@ export async function validateMasterSession(token: string): Promise<boolean> {
 
   if (!session) return false;
 
-  return session.expiresAt > new Date();
+  // Force proper Date parsing in case DB driver returns string/timestamp object
+  const expires =
+    session.expiresAt instanceof Date
+      ? session.expiresAt
+      : new Date(session.expiresAt as unknown as string);
+
+  return expires.getTime() > Date.now();
 }
 
 export async function getMasterSessionData(
-  token: string
+  token: string,
 ): Promise<{ valid: true; actingCashierId: string | null } | { valid: false }> {
   if (!token) return { valid: false };
 
@@ -81,7 +111,9 @@ export async function getMasterSessionData(
   return { valid: true, actingCashierId: session.actingCashierId ?? null };
 }
 
-export async function getMasterSessionFromCookies(): Promise<string | undefined> {
+export async function getMasterSessionFromCookies(): Promise<
+  string | undefined
+> {
   const cookieStore = await cookies();
   return cookieStore.get(MASTER_SESSION_COOKIE)?.value;
 }
