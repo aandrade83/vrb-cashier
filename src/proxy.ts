@@ -2,13 +2,14 @@
 // VRB Cashier — Middleware (internal auth, no Clerk)
 //
 // Route hierarchy:
-//   /master/*                    → Master auth (env credentials + session cookie)
+//   /master/*                    → Master auth gate (cookie presence check only;
+//                                  DB validation happens in server components)
 //   /{slug}/{token}/sign-in      → Public (redirect to home if already authenticated)
 //   /{slug}/{token}/admin/*      → Requires admin role (or master acting as admin)
 //   /{slug}/{token}/clerk/*      → Requires clerk role
 //   /{slug}/{token}/player/*     → Requires player role
 //   /api/auth/*                  → Public (login/logout endpoints)
-//   /api/master/*                → Public (master login/logout/validate)
+//   /api/master/*                → Public (master login/logout)
 //   /api/cashier/*               → Public (cashier validation)
 //   /api/cron/*                  → Public (cron endpoints)
 //   /api/upload                  → Auth enforced inside route handler
@@ -44,7 +45,7 @@ const CACHE_TTL_MS = 60_000;
 async function resolveCashier(
   slug: string,
   token: string,
-  baseUrl: string
+  baseUrl: string,
 ): Promise<CachedCashier | null> {
   const cacheKey = `${slug}:${token}`;
   const cached = cashierCache.get(cacheKey);
@@ -56,7 +57,7 @@ async function resolveCashier(
   try {
     const res = await fetch(
       `${baseUrl}/api/cashier/validate?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`,
-      { next: { revalidate: 0 } }
+      { next: { revalidate: 0 } },
     );
 
     if (!res.ok) return null;
@@ -80,32 +81,21 @@ async function resolveCashier(
 
 async function validateUserSession(
   token: string,
-  baseUrl: string
+  baseUrl: string,
 ): Promise<{ valid: boolean; userId?: string; cashierId?: string; role?: string }> {
   try {
     const res = await fetch(
       `${baseUrl}/api/auth/validate-session?token=${encodeURIComponent(token)}`,
-      { next: { revalidate: 0 } }
+      { next: { revalidate: 0 } },
     );
 
     if (!res.ok) return { valid: false };
-    return (await res.json()) as { valid: boolean; userId?: string; cashierId?: string; role?: string };
-  } catch {
-    return { valid: false };
-  }
-}
-
-async function validateMasterSession(
-  token: string,
-  baseUrl: string
-): Promise<{ valid: boolean; actingCashierId?: string | null }> {
-  try {
-    const res = await fetch(
-      `${baseUrl}/api/master/validate-session?token=${encodeURIComponent(token)}`,
-      { next: { revalidate: 0 } }
-    );
-    if (!res.ok) return { valid: false };
-    return (await res.json()) as { valid: boolean; actingCashierId?: string | null };
+    return (await res.json()) as {
+      valid: boolean;
+      userId?: string;
+      cashierId?: string;
+      role?: string;
+    };
   } catch {
     return { valid: false };
   }
@@ -122,17 +112,11 @@ function homeForRole(role: string, slug: string, token: string): string {
 // ---------------------------------------------------------------------------
 
 export default async function middleware(req: NextRequest) {
-  const url = req.nextUrl;
-  const pathname = url.pathname;
+  const { pathname } = req.nextUrl;
   const baseUrl = req.nextUrl.origin;
 
   // ------------------------------------------------------------------
-  // 1. Static assets and Next.js internals — pass through
-  // ------------------------------------------------------------------
-  // (handled by the config matcher — nothing to do here)
-
-  // ------------------------------------------------------------------
-  // 2. Fully public routes — no auth required
+  // 1. Fully public routes — no auth required
   // ------------------------------------------------------------------
   if (
     pathname === "/" ||
@@ -148,31 +132,24 @@ export default async function middleware(req: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 3. Master routes
+  // 2. Master routes — cookie presence gate only
+  //    Full DB validation happens inside each server component.
   // ------------------------------------------------------------------
   if (pathname.startsWith("/master")) {
     if (pathname === "/master/login") {
       return NextResponse.next();
     }
 
-    const sessionToken = req.cookies.get(MASTER_SESSION_COOKIE)?.value;
-
-    if (!sessionToken) {
+    const hasCookie = !!req.cookies.get(MASTER_SESSION_COOKIE)?.value;
+    if (!hasCookie) {
       return NextResponse.redirect(new URL("/master/login", req.url));
-    }
-
-    const masterResult = await validateMasterSession(sessionToken, baseUrl);
-    if (!masterResult.valid) {
-      const response = NextResponse.redirect(new URL("/master/login", req.url));
-      response.cookies.delete(MASTER_SESSION_COOKIE);
-      return response;
     }
 
     return NextResponse.next();
   }
 
   // ------------------------------------------------------------------
-  // 4. Cashier routes — /{slug}/{token}/...
+  // 3. Cashier routes — /{slug}/{token}/...
   // ------------------------------------------------------------------
   const cashierRouteMatch = /^\/([^/]+)\/([^/]+)(\/.*)?$/.exec(pathname);
 
@@ -181,7 +158,6 @@ export default async function middleware(req: NextRequest) {
     const token = cashierRouteMatch[2];
     const rest = cashierRouteMatch[3] ?? "/";
 
-    // Resolve cashier from DB (cached)
     const cashier = await resolveCashier(slug, token, baseUrl);
 
     if (!cashier) {
@@ -192,7 +168,6 @@ export default async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/cashier-inactive", req.url));
     }
 
-    // Inject cashier context headers for server components
     const requestHeaders = new Headers(req.headers);
     requestHeaders.set(CASHIER_ID_HEADER, cashier.id);
     requestHeaders.set(CASHIER_SLUG_HEADER, cashier.slug);
@@ -205,14 +180,13 @@ export default async function middleware(req: NextRequest) {
         const sessionData = await validateUserSession(sessionToken, baseUrl);
         if (sessionData.valid && sessionData.cashierId === cashier.id && sessionData.role) {
           return NextResponse.redirect(
-            new URL(homeForRole(sessionData.role, slug, token), req.url)
+            new URL(homeForRole(sessionData.role, slug, token), req.url),
           );
         }
       }
       return NextResponse.next({ request: { headers: requestHeaders } });
     }
 
-    // All other cashier routes require authentication
     const roleRequired = rest.startsWith("/admin")
       ? "admin"
       : rest.startsWith("/clerk")
@@ -222,25 +196,22 @@ export default async function middleware(req: NextRequest) {
       : null;
 
     if (!roleRequired) {
-      // e.g. /{slug}/{token}/ root page — just resolve cashier, no auth
       return NextResponse.next({ request: { headers: requestHeaders } });
     }
 
-    // Check if master is acting as admin for this cashier
+    // Master acting as admin for this cashier — cookie presence is enough here;
+    // the page will verify the session properly.
     const masterToken = req.cookies.get(MASTER_SESSION_COOKIE)?.value;
     if (masterToken && roleRequired === "admin") {
-      const masterResult = await validateMasterSession(masterToken, baseUrl);
-      if (masterResult.valid && masterResult.actingCashierId === cashier.id) {
-        return NextResponse.next({ request: { headers: requestHeaders } });
-      }
+      // Let through — admin page validates master session against DB.
+      return NextResponse.next({ request: { headers: requestHeaders } });
     }
 
-    // Check user session cookie
     const sessionToken = req.cookies.get(USER_SESSION_COOKIE)?.value;
 
     if (!sessionToken) {
       return NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url)
+        new URL(`/${slug}/${token}/sign-in`, req.url),
       );
     }
 
@@ -248,16 +219,15 @@ export default async function middleware(req: NextRequest) {
 
     if (!sessionData.valid) {
       const response = NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url)
+        new URL(`/${slug}/${token}/sign-in`, req.url),
       );
       response.cookies.delete(USER_SESSION_COOKIE);
       return response;
     }
 
-    // Cross-cashier isolation: session must belong to this cashier
     if (sessionData.cashierId !== cashier.id) {
       return NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url)
+        new URL(`/${slug}/${token}/sign-in`, req.url),
       );
     }
 
@@ -265,13 +235,13 @@ export default async function middleware(req: NextRequest) {
 
     if (!effectiveRole) {
       return NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url)
+        new URL(`/${slug}/${token}/sign-in`, req.url),
       );
     }
 
     if (effectiveRole !== roleRequired) {
       return NextResponse.redirect(
-        new URL(homeForRole(effectiveRole, slug, token), req.url)
+        new URL(homeForRole(effectiveRole, slug, token), req.url),
       );
     }
 
@@ -279,7 +249,7 @@ export default async function middleware(req: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 5. Anything else — pass through (404 handled by Next.js)
+  // 4. Anything else — pass through (404 handled by Next.js)
   // ------------------------------------------------------------------
   return NextResponse.next();
 }

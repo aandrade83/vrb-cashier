@@ -146,7 +146,13 @@
       "Bash(taskkill /PID 25500 /F)",
       "PowerShell(Stop-Process *)",
       "Bash(NEXT_TURBOPACK=0 npm run build)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(vercel --version)",
+      "Bash(gh pr *)",
+      "Bash(winget list *)",
+      "Bash(where gh *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }

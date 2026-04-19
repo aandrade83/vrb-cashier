@@ -1,20 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { masterLogoutAction } from "@/app/master/actions";
 import { Button } from "@/components/ui/button";
 
 export function MasterLogoutButton() {
-  const router = useRouter();
-
-  async function handleLogout() {
-    await fetch("/api/master/logout", { method: "POST" });
-    router.push("/master/login");
-    router.refresh();
-  }
-
   return (
-    <Button variant="outline" size="sm" onClick={handleLogout}>
-      Sign out
-    </Button>
+    <form action={masterLogoutAction}>
+      <Button type="submit" variant="outline" size="sm">
+        Sign out
+      </Button>
+    </form>
   );
 }
