@@ -5,11 +5,16 @@
 
 import { db } from "@/db";
 import { cashiers } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Cashier, NewCashier } from "@/db/schema";
 
 export async function getAllCashiers(): Promise<Cashier[]> {
   return db.select().from(cashiers).orderBy(cashiers.createdAt);
+}
+
+export async function getCashiersByIds(ids: string[]): Promise<Cashier[]> {
+  if (ids.length === 0) return [];
+  return db.select().from(cashiers).where(inArray(cashiers.id, ids)).orderBy(cashiers.name);
 }
 
 export async function getCashierById(id: string): Promise<Cashier | null> {

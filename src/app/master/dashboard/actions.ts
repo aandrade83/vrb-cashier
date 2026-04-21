@@ -2,8 +2,12 @@
 
 import { z } from "zod";
 import { toggleCashierActive, deleteCashier, updateCashier } from "@/data/cashiers";
+import { cloneCashierMethods } from "@/data/methods";
 import { isMasterAuthenticated, verifyMasterPassword } from "@/lib/master-auth";
 import { revalidatePath } from "next/cache";
+import { db } from "@/db";
+import { cashiers } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 async function requireMaster() {
   const ok = await isMasterAuthenticated();
@@ -18,6 +22,30 @@ export async function toggleCashierActiveAction(id: string): Promise<void> {
   await requireMaster();
   await toggleCashierActive(id);
   revalidatePath("/master/dashboard");
+}
+
+export async function toggleDepositsEnabledAction(id: string): Promise<void> {
+  await requireMaster();
+  const [c] = await db.select({ depositsEnabled: cashiers.depositsEnabled }).from(cashiers).where(eq(cashiers.id, id)).limit(1);
+  if (c) await db.update(cashiers).set({ depositsEnabled: !c.depositsEnabled }).where(eq(cashiers.id, id));
+  revalidatePath("/master/dashboard");
+}
+
+export async function togglePayoutsEnabledAction(id: string): Promise<void> {
+  await requireMaster();
+  const [c] = await db.select({ payoutsEnabled: cashiers.payoutsEnabled }).from(cashiers).where(eq(cashiers.id, id)).limit(1);
+  if (c) await db.update(cashiers).set({ payoutsEnabled: !c.payoutsEnabled }).where(eq(cashiers.id, id));
+  revalidatePath("/master/dashboard");
+}
+
+export async function cloneCashierMethodsAction(
+  sourceCashierId: string,
+  targetCashierId: string,
+): Promise<{ error?: string }> {
+  await requireMaster();
+  await cloneCashierMethods(sourceCashierId, targetCashierId);
+  revalidatePath("/master/dashboard");
+  return {};
 }
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { getMethodWithFields } from "@/data/methods";
 import { DepositForm } from "@/app/(player)/player/deposits/[methodId]/_components/DepositForm";
 import { buildPath } from "@/lib/paths";
-import { getUserSession } from "@/lib/auth/session";
+import { getCashierPageAccess } from "@/lib/auth/cashier-access";
+import { getCashier } from "@/lib/cashier-context";
 
 export default async function CashierDepositMethodPage({
   params,
@@ -12,13 +13,15 @@ export default async function CashierDepositMethodPage({
   params: Promise<{ slug: string; token: string; methodId: string }>;
 }) {
   const { slug, token, methodId } = await params;
-  const session = await getUserSession();
+  const [access, cashier] = await Promise.all([
+    getCashierPageAccess("player"),
+    getCashier(),
+  ]);
 
-  if (!session || session.role !== "player") {
-    redirect(`/${slug}/${token}/sign-in`);
-  }
+  if (!access) redirect(`/${slug}/${token}/sign-in`);
+  if (!cashier.depositsEnabled) redirect(`/${slug}/${token}/player/dashboard`);
 
-  const cashierId = session.cashierId;
+  const { cashierId } = access;
   const base = `/${slug}/${token}/player`;
 
   const method = await getMethodWithFields(methodId, cashierId);

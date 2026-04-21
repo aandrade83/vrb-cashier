@@ -15,7 +15,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { createUserAction } from "./actions";
 
-export function CreateUserForm() {
+export function CreateUserForm({ redirectPath }: { redirectPath: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -44,7 +44,7 @@ export function CreateUserForm() {
       return;
     }
 
-    router.push("/admin/users");
+    router.push(redirectPath);
   }
 
   return (
@@ -54,9 +54,6 @@ export function CreateUserForm() {
           <div className="space-y-1">
             <Label htmlFor="username">Username</Label>
             <Input id="username" name="username" required autoComplete="off" />
-            <p className="text-xs text-muted-foreground">
-              Lowercase letters, numbers, dots, underscores, hyphens only.
-            </p>
           </div>
           <div className="space-y-1">
             <Label htmlFor="password">Initial Password</Label>

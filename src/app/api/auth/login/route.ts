@@ -23,7 +23,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid cashier context" }, { status: 400 });
   }
 
-  // Resolve cashier from slug + token
   const [cashier] = await db
     .select({ id: cashiers.id })
     .from(cashiers)
@@ -35,7 +34,6 @@ export async function POST(req: NextRequest) {
   }
 
   const cashierId = cashier.id;
-
   const rawUsername = body.username?.trim();
   const password = body.password;
 
@@ -46,7 +44,6 @@ export async function POST(req: NextRequest) {
   const username = rawUsername.toLowerCase();
   const ipAddress = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined;
 
-  // Rate limit check
   const allowed = await checkLoginRateLimit(cashierId, username);
   if (!allowed) {
     return NextResponse.json(
@@ -55,75 +52,79 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Look up user
   const [user] = await db
     .select()
     .from(cashierUsers)
     .where(and(eq(cashierUsers.cashierId, cashierId), eq(cashierUsers.username, username)))
     .limit(1);
 
-  if (user) {
-    const passwordMatch = await verifyPassword(password, user.passwordHash);
+  // ── Admin / Clerk: local credentials only, no sportsbook ──────────────────
+  if (user && user.role !== "player") {
+    const valid = await verifyPassword(password, user.passwordHash);
 
-    if (passwordMatch) {
-      if (!user.isActive) {
-        await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "user_inactive" });
-        return NextResponse.json({ error: "Account is inactive" }, { status: 401 });
-      }
-
-      await logLoginAttempt({ cashierId, username, ipAddress, success: true });
-      await createUserSession(user.id, cashierId, user.role);
-
-      const redirect = user.role === "player"
-        ? buildPath(cashierSlug, cashierToken, "player", "dashboard")
-        : buildPath(cashierSlug, cashierToken, user.role);
-      return NextResponse.json({ redirect });
-    }
-
-    // Password mismatch — only players get sportsbook fallback
-    if (user.role !== "player") {
+    if (!valid) {
       await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "wrong_password" });
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // Case A3: player found, wrong password → try sportsbook
-    const result = await validateSportsbookCredentials(username, password);
-
-    if (result.success) {
-      const newHash = await hashPassword(password);
-      await db.update(cashierUsers).set({ passwordHash: newHash }).where(eq(cashierUsers.id, user.id));
-
-      if (!user.isActive) {
-        await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "user_inactive", sportsbookChecked: true });
-        return NextResponse.json({ error: "Account is inactive" }, { status: 401 });
-      }
-
-      await logLoginAttempt({ cashierId, username, ipAddress, success: true, sportsbookChecked: true });
-      await createUserSession(user.id, cashierId, "player");
-
-      const redirect = buildPath(cashierSlug, cashierToken, "player", "dashboard");
-      return NextResponse.json({ redirect });
+    if (!user.isActive) {
+      await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "user_inactive" });
+      return NextResponse.json({ error: "Account is inactive" }, { status: 401 });
     }
 
-    if (result.reason === "invalid_credentials") {
-      await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "sportsbook_invalid", sportsbookChecked: true });
+    await logLoginAttempt({ cashierId, username, ipAddress, success: true });
+    await createUserSession(user.id, cashierId, user.role);
+
+    const redirect =
+      user.role === "clerk"
+        ? buildPath(cashierSlug, cashierToken, "clerk", "queue")
+        : buildPath(cashierSlug, cashierToken, user.role, "dashboard");
+
+    return NextResponse.json({ redirect });
+  }
+
+  // ── Player: always verify with sportsbook first ────────────────────────────
+  const sportsbookResult = await validateSportsbookCredentials(username, password);
+
+  if (!sportsbookResult.success) {
+    const reason = sportsbookResult.reason === "invalid_credentials"
+      ? "sportsbook_invalid"
+      : "sportsbook_error";
+    await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: reason, sportsbookChecked: true });
+
+    if (sportsbookResult.reason === "invalid_credentials") {
       return NextResponse.json(
-        { error: "Sportsbook credentials are not valid. Please verify them on the sportsbook site." },
+        { error: "Invalid credentials. Please verify them on the sportsbook site." },
         { status: 401 }
       );
     }
-
-    await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "sportsbook_error", sportsbookChecked: true });
     return NextResponse.json(
       { error: "Could not connect to sportsbook. Please try again later." },
       { status: 503 }
     );
   }
 
-  // Case A2: user not found → validate against sportsbook
-  const result = await validateSportsbookCredentials(username, password);
+  // Sportsbook verified — sync player in local DB
+  if (user) {
+    // Update stored password hash if it changed
+    const samePassword = await verifyPassword(password, user.passwordHash);
+    if (!samePassword) {
+      const newHash = await hashPassword(password);
+      await db
+        .update(cashierUsers)
+        .set({ passwordHash: newHash })
+        .where(eq(cashierUsers.id, user.id));
+    }
 
-  if (result.success) {
+    if (!user.isActive) {
+      await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "user_inactive", sportsbookChecked: true });
+      return NextResponse.json({ error: "Account is inactive" }, { status: 401 });
+    }
+
+    await logLoginAttempt({ cashierId, username, ipAddress, success: true, sportsbookChecked: true });
+    await createUserSession(user.id, cashierId, "player");
+  } else {
+    // New player — create record
     const passwordHash = await hashPassword(password);
     const [newUser] = await db
       .insert(cashierUsers)
@@ -132,22 +133,8 @@ export async function POST(req: NextRequest) {
 
     await logLoginAttempt({ cashierId, username, ipAddress, success: true, sportsbookChecked: true });
     await createUserSession(newUser.id, cashierId, "player");
-
-    const redirect = buildPath(cashierSlug, cashierToken, "player", "dashboard");
-    return NextResponse.json({ redirect });
   }
 
-  if (result.reason === "invalid_credentials") {
-    await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "sportsbook_invalid", sportsbookChecked: true });
-    return NextResponse.json(
-      { error: "Sportsbook credentials are not valid. Please verify them on the sportsbook site." },
-      { status: 401 }
-    );
-  }
-
-  await logLoginAttempt({ cashierId, username, ipAddress, success: false, failureReason: "sportsbook_error", sportsbookChecked: true });
-  return NextResponse.json(
-    { error: "Could not connect to sportsbook. Please try again later." },
-    { status: 503 }
-  );
+  const redirect = buildPath(cashierSlug, cashierToken, "player", "dashboard");
+  return NextResponse.json({ redirect });
 }

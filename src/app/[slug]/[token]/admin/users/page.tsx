@@ -33,7 +33,7 @@ export default async function CashierUsersPage({
           Create User
         </Link>
       </div>
-      <RoleFilterTabs currentRole={validRole} />
+      <RoleFilterTabs currentRole={validRole} basePath={base} />
       <Card>
         <CardContent className="p-0">
           <UsersTable users={userList} />

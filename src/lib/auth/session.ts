@@ -5,6 +5,7 @@ import { eq, lt, sql, and } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { USER_SESSION_COOKIE, MASTER_SESSION_COOKIE } from "./constants";
 import type { AuthSession, UserSession, MasterSession, UserRole } from "./types";
+import { getMasterSessionData } from "@/lib/master-auth";
 export { USER_SESSION_COOKIE, MASTER_SESSION_COOKIE } from "./constants";
 
 const SESSION_DURATION = {
@@ -20,7 +21,7 @@ const SESSION_DURATION = {
 export async function createUserSession(
   userId: string,
   cashierId: string,
-  role: UserRole
+  role: UserRole,
 ): Promise<string> {
   const token = randomBytes(32).toString("hex");
   const durationMs = SESSION_DURATION[role];
@@ -28,7 +29,6 @@ export async function createUserSession(
 
   await db.insert(userSessions).values({ token, userId, cashierId, role, expiresAt });
 
-  // Clean up expired sessions for this user on every login
   await purgeExpiredUserSessionsForUser(userId);
 
   const cookieStore = await cookies();
@@ -57,8 +57,8 @@ async function purgeExpiredUserSessionsForUser(userId: string): Promise<void> {
     .where(
       and(
         eq(userSessions.userId, userId),
-        lt(userSessions.expiresAt, sql`now()`)
-      )
+        lt(userSessions.expiresAt, sql`now()`),
+      ),
     );
 }
 
@@ -92,20 +92,7 @@ export async function getMasterSession(): Promise<MasterSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(MASTER_SESSION_COOKIE)?.value;
   if (!token) return null;
-
-  const [session] = await db
-    .select()
-    .from(masterSessions)
-    .where(eq(masterSessions.token, token))
-    .limit(1);
-
-  if (!session || session.expiresAt <= new Date()) return null;
-
-  return {
-    type: "master",
-    sessionToken: session.token,
-    actingCashierId: session.actingCashierId ?? undefined,
-  };
+  return getMasterSessionData(token);
 }
 
 export async function getSession(): Promise<AuthSession | null> {
@@ -120,11 +107,15 @@ export async function getSession(): Promise<AuthSession | null> {
 
 export async function setMasterActingCashier(
   masterToken: string,
-  cashierId: string | null
+  cashierId: string | null,
+  role?: UserRole | null,
 ): Promise<void> {
   await db
     .update(masterSessions)
-    .set({ actingCashierId: cashierId })
+    .set({
+      actingCashierId: cashierId,
+      actingRole: role ?? null,
+    })
     .where(eq(masterSessions.token, masterToken));
 }
 
@@ -134,16 +125,16 @@ export async function setMasterActingCashier(
 
 export async function getEffectiveRoleForCashier(
   session: AuthSession,
-  cashierId: string
+  cashierId: string,
 ): Promise<UserRole | null> {
   if (session.type === "cashier") {
     if (session.cashierId !== cashierId) return null;
     return session.role;
   }
 
-  // Master acting as admin inside this specific cashier
   if (session.type === "master" && session.actingCashierId === cashierId) {
-    return "admin";
+    // Return impersonated role if set, otherwise default to admin
+    return (session.actingRole as UserRole) ?? "admin";
   }
 
   return null;
@@ -160,7 +151,7 @@ export type CashierAccess = {
 };
 
 export async function getSessionForCashier(
-  cashierId: string
+  cashierId: string,
 ): Promise<CashierAccess | null> {
   const userSession = await getUserSession();
   if (userSession && userSession.cashierId === cashierId) {
@@ -173,7 +164,8 @@ export async function getSessionForCashier(
 
   const masterSession = await getMasterSession();
   if (masterSession && masterSession.actingCashierId === cashierId) {
-    return { role: "admin", userId: null, isMasterActing: true };
+    const role = (masterSession.actingRole as UserRole) ?? "admin";
+    return { role, userId: null, isMasterActing: true };
   }
 
   return null;

@@ -2,6 +2,7 @@ import { db } from "@/db";
 import {
   transactions,
   cashierUsers,
+  cashiers,
   paymentMethods,
   transactionFieldValues,
   transactionAttachments,
@@ -23,6 +24,7 @@ export type QueueTransaction = {
   playerFirstName: string | null;
   playerLastName: string | null;
   playerEmail: string | null;
+  playerUsername: string | null;
   lockedByClerkId: string | null;
   lockedByClerkFirstName: string | null;
   lockedByClerkLastName: string | null;
@@ -46,6 +48,7 @@ export async function getPendingTransactions(cashierId: string): Promise<QueueTr
       playerFirstName: cashierUsers.firstName,
       playerLastName: cashierUsers.lastName,
       playerEmail: cashierUsers.email,
+      playerUsername: cashierUsers.username,
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
@@ -89,6 +92,7 @@ export async function getCompletedTransactions(
       playerFirstName: cashierUsers.firstName,
       playerLastName: cashierUsers.lastName,
       playerEmail: cashierUsers.email,
+      playerUsername: cashierUsers.username,
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
@@ -179,6 +183,7 @@ export async function getTransactionDetail(
       playerFirstName: cashierUsers.firstName,
       playerLastName: cashierUsers.lastName,
       playerEmail: cashierUsers.email,
+      playerUsername: cashierUsers.username,
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
@@ -232,6 +237,109 @@ export async function getTransactionDetail(
     .orderBy(desc(transactionUpdates.createdAt));
 
   return { ...row, fieldValues, attachments, updates: updatesRaw };
+}
+
+// ─── Multi-cashier queue (for master clerk dashboard) ─────────────────────────
+
+export type MultiQueueTransaction = QueueTransaction & {
+  cashierId: string;
+  cashierName: string;
+  cashierSlug: string;
+  cashierToken: string;
+};
+
+export async function getPendingTransactionsMulti(
+  cashierIds: string[],
+): Promise<MultiQueueTransaction[]> {
+  if (cashierIds.length === 0) return [];
+  const clerkUser = alias(cashierUsers, "clerk_user");
+
+  const rows = await db
+    .select({
+      id: transactions.id,
+      referenceCode: transactions.referenceCode,
+      type: transactions.type,
+      status: transactions.status,
+      amount: transactions.amount,
+      currency: transactions.currency,
+      methodName: paymentMethods.name,
+      playerFirstName: cashierUsers.firstName,
+      playerLastName: cashierUsers.lastName,
+      playerEmail: cashierUsers.email,
+      playerUsername: cashierUsers.username,
+      lockedByClerkId: transactions.lockedByClerkId,
+      lockedByClerkFirstName: clerkUser.firstName,
+      lockedByClerkLastName: clerkUser.lastName,
+      lockedAt: transactions.lockedAt,
+      lockExpiresAt: transactions.lockExpiresAt,
+      createdAt: transactions.createdAt,
+      cashierId: transactions.cashierId,
+      cashierName: cashiers.name,
+      cashierSlug: cashiers.slug,
+      cashierToken: cashiers.token,
+    })
+    .from(transactions)
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
+    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .innerJoin(cashiers, eq(transactions.cashierId, cashiers.id))
+    .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
+    .where(
+      and(
+        inArray(transactions.cashierId, cashierIds),
+        inArray(transactions.status, ["pending", "in_progress"]),
+      ),
+    )
+    .orderBy(asc(transactions.createdAt));
+
+  return rows as MultiQueueTransaction[];
+}
+
+export async function getCompletedTransactionsMulti(
+  cashierIds: string[],
+  limit = 20,
+): Promise<MultiQueueTransaction[]> {
+  if (cashierIds.length === 0) return [];
+  const clerkUser = alias(cashierUsers, "clerk_user");
+
+  const rows = await db
+    .select({
+      id: transactions.id,
+      referenceCode: transactions.referenceCode,
+      type: transactions.type,
+      status: transactions.status,
+      amount: transactions.amount,
+      currency: transactions.currency,
+      methodName: paymentMethods.name,
+      playerFirstName: cashierUsers.firstName,
+      playerLastName: cashierUsers.lastName,
+      playerEmail: cashierUsers.email,
+      playerUsername: cashierUsers.username,
+      lockedByClerkId: transactions.lockedByClerkId,
+      lockedByClerkFirstName: clerkUser.firstName,
+      lockedByClerkLastName: clerkUser.lastName,
+      lockedAt: transactions.lockedAt,
+      lockExpiresAt: transactions.lockExpiresAt,
+      createdAt: transactions.createdAt,
+      cashierId: transactions.cashierId,
+      cashierName: cashiers.name,
+      cashierSlug: cashiers.slug,
+      cashierToken: cashiers.token,
+    })
+    .from(transactions)
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
+    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .innerJoin(cashiers, eq(transactions.cashierId, cashiers.id))
+    .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
+    .where(
+      and(
+        inArray(transactions.cashierId, cashierIds),
+        inArray(transactions.status, ["approved", "rejected", "completed"]),
+      ),
+    )
+    .orderBy(desc(transactions.createdAt))
+    .limit(limit);
+
+  return rows as MultiQueueTransaction[];
 }
 
 // ─── Clerk lookup ──────────────────────────────────────────────────────────────

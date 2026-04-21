@@ -25,6 +25,11 @@ import { relations } from "drizzle-orm";
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "clerk", "player"]);
 
+export const masterRoleEnum = pgEnum("master_role", [
+  "master_admin",
+  "master_clerk",
+]);
+
 export const methodTypeEnum = pgEnum("method_type", ["deposit", "payout"]);
 
 export const fieldTypeEnum = pgEnum("field_type", [
@@ -75,6 +80,8 @@ export const cashiers = pgTable(
     contactPhone: text("contact_phone"),
 
     isActive: boolean("is_active").notNull().default(true),
+    depositsEnabled: boolean("deposits_enabled").notNull().default(true),
+    payoutsEnabled: boolean("payouts_enabled").notNull().default(true),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -118,6 +125,9 @@ export const cashierUsers = pgTable(
 
     isActive: boolean("is_active").notNull().default(true),
 
+    mustResetPassword: boolean("must_reset_password").notNull().default(false),
+    lastLogin: timestamp("last_login", { withTimezone: true }),
+
     // Populated only for clerk/admin rows — tracks who created this user
     createdByAdminId: uuid("created_by_admin_id"),
 
@@ -140,6 +150,45 @@ export const cashierUsers = pgTable(
 );
 
 // =============================================================================
+// MASTER USERS
+// Internal auth for the /master/* routes.
+// Only two roles: master_admin and master_clerk.
+// The permanent ROOT account lives in ENV vars (MASTER_EMAIL / MASTER_PASSWORD)
+// and is NOT stored here. Rows here are additional DB-managed accounts.
+// =============================================================================
+
+export const masterUsers = pgTable(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    email: text("email").notNull().unique(),
+    username: text("username").notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+
+    // DB column is text — master_role enum is available for future migration
+    role: text("role").$type<"master_admin" | "master_clerk">().notNull().default("master_clerk"),
+
+    isActive: boolean("is_active").notNull().default(true),
+    mustResetPassword: boolean("must_reset_password").notNull().default(false),
+    lastLogin: timestamp("last_login", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("master_users_email_idx").on(table.email),
+    uniqueIndex("master_users_username_idx").on(table.username),
+    index("master_users_role_idx").on(table.role),
+    index("master_users_active_idx").on(table.isActive),
+  ],
+);
+
+// =============================================================================
 // PAYMENT METHODS
 // Configured entirely by Admin. A method belongs to either deposit or payout.
 // Field definitions are stored in the `method_fields` table (normalized).
@@ -150,10 +199,9 @@ export const paymentMethods = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    // Which cashier this method belongs to
-    cashierId: uuid("cashier_id")
-      .notNull()
-      .references(() => cashiers.id),
+    // NULL = global method managed from master.
+    // Non-null = legacy per-cashier method (retained for FK integrity on transactions).
+    cashierId: uuid("cashier_id").references(() => cashiers.id),
 
     name: text("name").notNull(), // e.g. "Bank Transfer", "USDT TRC-20"
     type: methodTypeEnum("type").notNull(), // "deposit" | "payout"
@@ -165,9 +213,10 @@ export const paymentMethods = pgTable(
     // Soft-delete: deactivated methods remain visible in historical transactions
     isDeleted: boolean("is_deleted").notNull().default(false),
 
-    createdByAdminId: uuid("created_by_admin_id")
-      .notNull()
-      .references(() => cashierUsers.id),
+    // NULL = created by master (no cashier admin context).
+    createdByAdminId: uuid("created_by_admin_id").references(
+      () => cashierUsers.id,
+    ),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -194,10 +243,8 @@ export const methodFields = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    // Denormalized cashierId for direct isolation queries without method join
-    cashierId: uuid("cashier_id")
-      .notNull()
-      .references(() => cashiers.id),
+    // Denormalized cashierId — nullable for global methods (follows payment_methods.cashier_id).
+    cashierId: uuid("cashier_id").references(() => cashiers.id),
 
     methodId: uuid("method_id")
       .notNull()
@@ -646,6 +693,37 @@ export const addresses = pgTable(
 );
 
 // =============================================================================
+// CASHIER METHODS (Junction)
+// Links global payment methods to specific cashiers.
+// A method is available to a cashier only if a row exists here with enabled=true.
+// =============================================================================
+
+export const cashierMethods = pgTable(
+  "cashier_methods",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id, { onDelete: "cascade" }),
+    methodId: uuid("method_id")
+      .notNull()
+      .references(() => paymentMethods.id, { onDelete: "cascade" }),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("cashier_methods_cashier_method_idx").on(
+      table.cashierId,
+      table.methodId,
+    ),
+    index("cashier_methods_cashier_id_idx").on(table.cashierId),
+    index("cashier_methods_method_id_idx").on(table.methodId),
+  ],
+);
+
+// =============================================================================
 // MASTER SESSIONS
 // Session tokens for the /master/* routes (no Clerk, simple cookie auth).
 // =============================================================================
@@ -655,10 +733,24 @@ export const masterSessions = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     token: text("token").notNull().unique(),
+
+    // NULL = ENV root session. Non-null = DB user session.
+    masterUserId: uuid("master_user_id").references(() => masterUsers.id, {
+      onDelete: "set null",
+    }),
+
+    // 'env' = logged in via MASTER_EMAIL/MASTER_PASSWORD env vars
+    // 'db'  = logged in via users table
+    loginSource: text("login_source").notNull().default("env"),
+
     // Set when master is acting inside a specific cashier tenant
     actingCashierId: uuid("acting_cashier_id").references(() => cashiers.id, {
       onDelete: "set null",
     }),
+
+    // Role to impersonate when visiting cashier: null = admin, 'clerk', 'player'
+    actingRole: text("acting_role"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -732,13 +824,46 @@ export const loginAttempts = pgTable(
 );
 
 // =============================================================================
+// USER CASHIER PERMISSIONS
+// Controls which cashiers a DB master user (master_admin/master_clerk) can access.
+// ENV root always has access to everything — no row needed.
+// =============================================================================
+
+export const userCashierPermissions = pgTable(
+  "user_cashier_permissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    masterUserId: uuid("master_user_id")
+      .notNull()
+      .references(() => masterUsers.id, { onDelete: "cascade" }),
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ucp_user_cashier_idx").on(table.masterUserId, table.cashierId),
+    index("ucp_user_id_idx").on(table.masterUserId),
+    index("ucp_cashier_id_idx").on(table.cashierId),
+  ],
+);
+
+// =============================================================================
 // RELATIONS
 // Drizzle relation definitions — used by the query builder (db.query.*)
 // =============================================================================
 
+export const masterUsersRelations = relations(masterUsers, ({ many }) => ({
+  sessions: many(masterSessions),
+  cashierPermissions: many(userCashierPermissions),
+}));
+
 export const cashiersRelations = relations(cashiers, ({ many }) => ({
   cashierUsers: many(cashierUsers),
   paymentMethods: many(paymentMethods),
+  cashierMethods: many(cashierMethods),
   methodFields: many(methodFields),
   transactions: many(transactions),
   transactionFieldValues: many(transactionFieldValues),
@@ -778,8 +903,20 @@ export const paymentMethodsRelations = relations(
     }),
     fields: many(methodFields),
     transactions: many(transactions),
+    cashierAssignments: many(cashierMethods),
   }),
 );
+
+export const cashierMethodsRelations = relations(cashierMethods, ({ one }) => ({
+  cashier: one(cashiers, {
+    fields: [cashierMethods.cashierId],
+    references: [cashiers.id],
+  }),
+  method: one(paymentMethods, {
+    fields: [cashierMethods.methodId],
+    references: [paymentMethods.id],
+  }),
+}));
 
 export const methodFieldsRelations = relations(
   methodFields,
@@ -941,11 +1078,20 @@ export const addressesRelations = relations(addresses, ({ one }) => ({
 export type Cashier = typeof cashiers.$inferSelect;
 export type NewCashier = typeof cashiers.$inferInsert;
 
+export type MasterUser = typeof masterUsers.$inferSelect;
+export type NewMasterUser = typeof masterUsers.$inferInsert;
+
 export type CashierUser = typeof cashierUsers.$inferSelect;
 export type NewCashierUser = typeof cashierUsers.$inferInsert;
 
 export type PaymentMethod = typeof paymentMethods.$inferSelect;
 export type NewPaymentMethod = typeof paymentMethods.$inferInsert;
+
+export type CashierMethod = typeof cashierMethods.$inferSelect;
+export type NewCashierMethod = typeof cashierMethods.$inferInsert;
+
+export type UserCashierPermission = typeof userCashierPermissions.$inferSelect;
+export type NewUserCashierPermission = typeof userCashierPermissions.$inferInsert;
 
 export type MethodField = typeof methodFields.$inferSelect;
 export type NewMethodField = typeof methodFields.$inferInsert;

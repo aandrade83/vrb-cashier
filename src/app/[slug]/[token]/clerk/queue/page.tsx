@@ -5,7 +5,7 @@ import {
   getClerkById,
 } from "@/data/queue";
 import { QueueView } from "@/app/(clerk)/clerk/queue/_components/QueueView";
-import { getUserSession } from "@/lib/auth/session";
+import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 
 export default async function CashierQueuePage({
   params,
@@ -13,17 +13,18 @@ export default async function CashierQueuePage({
   params: Promise<{ slug: string; token: string }>;
 }) {
   const { slug, token } = await params;
-  const session = await getUserSession();
 
-  if (!session || session.role !== "clerk") {
+  const access = await getCashierPageAccess("clerk");
+  if (!access) {
     redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const { userId, cashierId } = session;
+  const { cashierId, userId, isMasterActing } = access;
 
   const [currentClerk, pending, completedDeposits, completedPayouts] =
     await Promise.all([
-      getClerkById(userId, cashierId),
+      // No real clerk when master is impersonating — pass null for lock operations
+      userId ? getClerkById(userId, cashierId) : Promise.resolve(null),
       getPendingTransactions(cashierId),
       getCompletedTransactions(cashierId, "deposit", 10),
       getCompletedTransactions(cashierId, "payout", 10),
@@ -34,7 +35,8 @@ export default async function CashierQueuePage({
       pending={pending}
       completedDeposits={completedDeposits}
       completedPayouts={completedPayouts}
-      currentClerkDbId={currentClerk?.id ?? ""}
+      currentClerkDbId={isMasterActing ? "" : (currentClerk?.id ?? "")}
+      basePath={`/${slug}/${token}/clerk`}
     />
   );
 }

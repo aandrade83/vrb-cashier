@@ -6,25 +6,17 @@ import { cashierUsers } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { setUserActive, deleteUser } from "@/data/users";
 import { getCashierId } from "@/lib/cashier-context";
-import { getUserSession } from "@/lib/auth/session";
+import { getSessionForCashier } from "@/lib/auth/session";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
 const userIdSchema = z.object({ userId: z.string().uuid() });
 
-async function requireAdmin(): Promise<{ sessionUserId: string } | { error: string }> {
-  const session = await getUserSession();
-  if (!session || session.role !== "admin") {
-    return { error: "Unauthorized" };
-  }
-  return { sessionUserId: session.userId };
-}
-
 export async function disableUserAction(data: { userId: string }): Promise<ActionResult> {
-  const authResult = await requireAdmin();
-  if ("error" in authResult) return { success: false, error: authResult.error };
-
   const cashierId = await getCashierId();
+  const access = await getSessionForCashier(cashierId);
+  if (!access || access.role !== "admin") return { success: false, error: "Unauthorized" };
+
   const parsed = userIdSchema.safeParse(data);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
@@ -33,10 +25,10 @@ export async function disableUserAction(data: { userId: string }): Promise<Actio
 }
 
 export async function enableUserAction(data: { userId: string }): Promise<ActionResult> {
-  const authResult = await requireAdmin();
-  if ("error" in authResult) return { success: false, error: authResult.error };
-
   const cashierId = await getCashierId();
+  const access = await getSessionForCashier(cashierId);
+  if (!access || access.role !== "admin") return { success: false, error: "Unauthorized" };
+
   const parsed = userIdSchema.safeParse(data);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
@@ -45,16 +37,16 @@ export async function enableUserAction(data: { userId: string }): Promise<Action
 }
 
 export async function deleteUserAction(data: { userId: string }): Promise<ActionResult> {
-  const authResult = await requireAdmin();
-  if ("error" in authResult) return { success: false, error: authResult.error };
-
   const cashierId = await getCashierId();
+  const access = await getSessionForCashier(cashierId);
+  if (!access || access.role !== "admin") return { success: false, error: "Unauthorized" };
+
   const parsed = userIdSchema.safeParse(data);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
 
   const { userId } = parsed.data;
 
-  if (authResult.sessionUserId === userId) {
+  if (access.userId === userId) {
     return { success: false, error: "You cannot delete your own account." };
   }
 

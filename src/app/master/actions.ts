@@ -28,16 +28,21 @@ export async function masterLoginAction(
     return "Invalid request";
   }
 
-  const valid = await verifyMasterCredentials(email.trim(), password);
-  if (!valid) {
-    return "Invalid credentials";
+  const result = await verifyMasterCredentials(email.trim(), password);
+  if (!result.success) {
+    return result.reason;
   }
 
-  const token = await createMasterSession();
+  const token = await createMasterSession({
+    isEnvRoot: result.isEnvRoot,
+    masterUserId: result.masterUserId,
+    role: result.role,
+  });
+
   const cookieStore = await cookies();
   cookieStore.set(MASTER_SESSION_COOKIE, token, COOKIE_OPTIONS);
 
-  redirect("/master/dashboard");
+  redirect(result.role === "master_clerk" ? "/master/clerk/dashboard" : "/master/dashboard");
 }
 
 export async function masterLogoutAction(): Promise<void> {

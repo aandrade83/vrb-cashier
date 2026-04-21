@@ -4,16 +4,17 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   currentRole?: string;
+  basePath: string;
 };
 
-const tabs = [
-  { label: "All",    href: "/admin/users",               value: undefined },
-  { label: "Admin",  href: "/admin/users?role=admin",    value: "admin" },
-  { label: "Clerk",  href: "/admin/users?role=clerk",    value: "clerk" },
-  { label: "Player", href: "/admin/users?role=player",   value: "player" },
-];
+export function RoleFilterTabs({ currentRole, basePath }: Props) {
+  const tabs = [
+    { label: "All",    href: `${basePath}/users`,               value: undefined },
+    { label: "Admin",  href: `${basePath}/users?role=admin`,    value: "admin" },
+    { label: "Clerk",  href: `${basePath}/users?role=clerk`,    value: "clerk" },
+    { label: "Player", href: `${basePath}/users?role=player`,   value: "player" },
+  ];
 
-export function RoleFilterTabs({ currentRole }: Props) {
   return (
     <div className="flex items-center gap-2">
       {tabs.map((tab) => (

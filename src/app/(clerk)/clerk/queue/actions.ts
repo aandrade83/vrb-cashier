@@ -14,6 +14,7 @@ import { eq, and } from "drizzle-orm";
 import { getClerkById } from "@/data/queue";
 import { getCashierId } from "@/lib/cashier-context";
 import { getUserSession } from "@/lib/auth/session";
+import { releasePoolLocks } from "@/data/names-pool";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -273,6 +274,10 @@ export async function updateTransactionStatusAction(
       clerkName: [clerk.firstName, clerk.lastName].filter(Boolean).join(" "),
     },
   });
+
+  if (TERMINAL_STATUSES.includes(newStatus)) {
+    await releasePoolLocks(transactionId);
+  }
 
   revalidatePath("/clerk/queue");
   return { success: true };

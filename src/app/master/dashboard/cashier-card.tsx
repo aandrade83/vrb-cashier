@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,8 +15,23 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Pencil, Trash2 } from "lucide-react";
-import { toggleCashierActiveAction, deleteCashierAction, editCashierAction } from "./actions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Pencil, Trash2, Settings2 } from "lucide-react";
+import Link from "next/link";
+import {
+  toggleCashierActiveAction,
+  toggleDepositsEnabledAction,
+  togglePayoutsEnabledAction,
+  deleteCashierAction,
+  editCashierAction,
+  cloneCashierMethodsAction,
+} from "./actions";
 import type { Cashier } from "@/db/schema";
 
 const APP_URL =
@@ -24,12 +39,13 @@ const APP_URL =
 
 interface Props {
   cashier: Cashier;
+  otherCashiers: Pick<Cashier, "id" | "name">[];
 }
 
-export function CashierCard({ cashier }: Props) {
+export function CashierCard({ cashier, otherCashiers }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [visitLoading, setVisitLoading] = useState(false);
+  const [visitLoading, setVisitLoading] = useState<"admin" | "clerk" | "player" | null>(null);
 
   // ── Edit dialog ──────────────────────────────────────────────────────────
   const [editOpen, setEditOpen] = useState(false);
@@ -37,6 +53,7 @@ export function CashierCard({ cashier }: Props) {
   const [editClientUrl, setEditClientUrl] = useState(cashier.clientUrl ?? "");
   const [editEmail, setEditEmail] = useState(cashier.contactEmail ?? "");
   const [editPhone, setEditPhone] = useState(cashier.contactPhone ?? "");
+  const [editCloneFrom, setEditCloneFrom] = useState("");
   const [editError, setEditError] = useState("");
   const [editLoading, setEditLoading] = useState(false);
 
@@ -51,13 +68,13 @@ export function CashierCard({ cashier }: Props) {
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
-  async function handleVisit() {
-    setVisitLoading(true);
+  async function handleVisit(role: "admin" | "clerk" | "player" = "admin") {
+    setVisitLoading(role);
     try {
       const res = await fetch("/api/master/visit-cashier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cashierId: cashier.id }),
+        body: JSON.stringify({ cashierId: cashier.id, role }),
       });
       const data = await res.json();
       if (data.redirect) {
@@ -65,14 +82,18 @@ export function CashierCard({ cashier }: Props) {
         router.refresh();
       }
     } finally {
-      setVisitLoading(false);
+      setVisitLoading(null);
     }
   }
 
   function handleToggle() {
-    startTransition(async () => {
-      await toggleCashierActiveAction(cashier.id);
-    });
+    startTransition(async () => { await toggleCashierActiveAction(cashier.id); });
+  }
+  function handleToggleDeposits() {
+    startTransition(async () => { await toggleDepositsEnabledAction(cashier.id); });
+  }
+  function handleTogglePayouts() {
+    startTransition(async () => { await togglePayoutsEnabledAction(cashier.id); });
   }
 
   async function handleEdit(e: React.FormEvent) {
@@ -86,12 +107,16 @@ export function CashierCard({ cashier }: Props) {
       contactEmail: editEmail,
       contactPhone: editPhone,
     });
-    setEditLoading(false);
     if (result.error) {
+      setEditLoading(false);
       setEditError(result.error);
-    } else {
-      setEditOpen(false);
+      return;
     }
+    if (editCloneFrom) {
+      await cloneCashierMethodsAction(editCloneFrom, cashier.id);
+    }
+    setEditLoading(false);
+    setEditOpen(false);
   }
 
   async function handleDelete(e: React.FormEvent) {
@@ -124,6 +149,36 @@ export function CashierCard({ cashier }: Props) {
               <Switch
                 checked={cashier.isActive}
                 onCheckedChange={handleToggle}
+                disabled={isPending}
+              />
+            </div>
+          </div>
+
+          {/* Deposits toggle */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground text-sm">Deposits</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground">
+                {cashier.depositsEnabled ? "On" : "Off"}
+              </span>
+              <Switch
+                checked={cashier.depositsEnabled}
+                onCheckedChange={handleToggleDeposits}
+                disabled={isPending}
+              />
+            </div>
+          </div>
+
+          {/* Payouts toggle */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground text-sm">Payouts</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground">
+                {cashier.payoutsEnabled ? "On" : "Off"}
+              </span>
+              <Switch
+                checked={cashier.payoutsEnabled}
+                onCheckedChange={handleTogglePayouts}
                 disabled={isPending}
               />
             </div>
@@ -184,18 +239,48 @@ export function CashierCard({ cashier }: Props) {
           )}
         </CardContent>
 
-        {/* Footer: Visit | Edit | Delete */}
-        <CardFooter className="flex items-center justify-between pt-2 pb-4 px-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleVisit}
-            disabled={visitLoading || !cashier.isActive}
-          >
-            {visitLoading ? "Opening..." : "Visit as Admin"}
-          </Button>
+        {/* Footer: Visit buttons | Edit | Delete */}
+        <CardFooter className="flex flex-col gap-2 pt-2 pb-4 px-4">
+          <div className="flex gap-2 w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => handleVisit("admin")}
+              disabled={visitLoading !== null || !cashier.isActive}
+            >
+              {visitLoading === "admin" ? "Opening..." : "Admin"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => handleVisit("clerk")}
+              disabled={visitLoading !== null || !cashier.isActive}
+            >
+              {visitLoading === "clerk" ? "Opening..." : "Clerk"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => handleVisit("player")}
+              disabled={visitLoading !== null || !cashier.isActive}
+            >
+              {visitLoading === "player" ? "Opening..." : "Player"}
+            </Button>
+          </div>
 
+          <div className="flex justify-between w-full">
+            <span className="text-xs text-muted-foreground self-center">Visit as:</span>
           <div className="flex gap-1">
+            <Link
+              href={`/master/cashiers/${cashier.id}/methods`}
+              title="Manage methods"
+              className={buttonVariants({ variant: "ghost", size: "icon" })}
+            >
+              <Settings2 className="h-4 w-4" />
+            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -213,6 +298,7 @@ export function CashierCard({ cashier }: Props) {
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+          </div>
           </div>
         </CardFooter>
       </Card>
@@ -237,7 +323,7 @@ export function CashierCard({ cashier }: Props) {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="edit-client-url">Client Site URL (optional)</Label>
+              <Label htmlFor="edit-client-url">Client Site URL</Label>
               <Input
                 id="edit-client-url"
                 type="url"
@@ -267,6 +353,32 @@ export function CashierCard({ cashier }: Props) {
                 onChange={(e) => setEditPhone(e.target.value)}
               />
             </div>
+            {otherCashiers.length > 0 && (
+              <div className="space-y-1">
+                <Label>Load Methods from (optional)</Label>
+                <Select
+                  value={editCloneFrom}
+                  onValueChange={(v) => setEditCloneFrom(!v || v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue>
+                    {editCloneFrom
+                      ? (otherCashiers.find((c) => c.id === editCloneFrom)?.name ?? editCloneFrom)
+                      : "Select a cashier to copy methods from"}
+                  </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {otherCashiers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Copies method assignments from the selected cashier into this one.
+                </p>
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
                 Cancel

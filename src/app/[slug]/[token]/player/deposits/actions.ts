@@ -10,6 +10,7 @@ import {
 } from "@/data/transactions";
 import { getMethodWithFields } from "@/data/methods";
 import { getUserSession } from "@/lib/auth/session";
+import { assignName, assignAddress } from "@/data/names-pool";
 
 type ActionResult = { success: true; transactionId: string } | { success: false; error: string };
 
@@ -102,6 +103,35 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
         value: fv.value,
       }))
     );
+  }
+
+  // Auto-assign name/address pool entries for fields of those types
+  const autoFields = method.fields.filter(
+    (f) => f.fieldType === "name" || f.fieldType === "address",
+  );
+  if (autoFields.length > 0) {
+    const autoValues = (
+      await Promise.all(
+        autoFields.map(async (f) => {
+          const assigned =
+            f.fieldType === "name"
+              ? await assignName(cashierId, transaction.id)
+              : await assignAddress(cashierId, transaction.id);
+          if (!assigned) return null;
+          return {
+            cashierId,
+            transactionId: transaction.id,
+            methodFieldId: f.id,
+            fieldLabelSnapshot: f.label,
+            fieldTypeSnapshot: f.fieldType as "name" | "address",
+            value: assigned,
+          };
+        }),
+      )
+    ).filter((v): v is NonNullable<typeof v> => v !== null);
+    if (autoValues.length > 0) {
+      await db.insert(transactionFieldValues).values(autoValues);
+    }
   }
 
   const attachmentFields = fieldValues.filter(

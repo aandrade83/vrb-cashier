@@ -23,9 +23,10 @@ interface Props {
   lockResult: LockResult;
   transactionId: string;
   currentClerkDbId: string;
+  queuePath?: string;
 }
 
-export function LockBanner({ lockResult, transactionId, currentClerkDbId }: Props) {
+export function LockBanner({ lockResult, transactionId, currentClerkDbId, queuePath = "/clerk/queue" }: Props) {
   useEffect(() => {
     if (!lockResult.acquired) return;
 
@@ -61,7 +62,7 @@ export function LockBanner({ lockResult, transactionId, currentClerkDbId }: Prop
       <div className="flex gap-2">
         <TakeOverDialog transactionId={transactionId} />
         <Link
-          href="/clerk/queue"
+          href={queuePath}
           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
         >
           Back to Queue
