@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getTransactionDetail, getClerkById } from "@/data/queue";
 import { lockTransactionAction } from "@/app/(clerk)/clerk/queue/actions";
 import { TransactionDetailView } from "@/app/(clerk)/clerk/queue/[transactionId]/_components/TransactionDetailView";
-import { getUserSession } from "@/lib/auth/session";
+import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 
 export default async function CashierTransactionDetailPage({
   params,
@@ -10,17 +10,17 @@ export default async function CashierTransactionDetailPage({
   params: Promise<{ slug: string; token: string; transactionId: string }>;
 }) {
   const { transactionId, slug, token } = await params;
-  const session = await getUserSession();
 
-  if (!session || session.role !== "clerk") {
+  const access = await getCashierPageAccess("clerk");
+  if (!access) {
     redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const { userId, cashierId } = session;
+  const { userId, cashierId, isMasterActing } = access;
 
   const [tx, currentClerk, lockResult] = await Promise.all([
     getTransactionDetail(transactionId, cashierId),
-    getClerkById(userId, cashierId),
+    userId ? getClerkById(userId, cashierId) : Promise.resolve(null),
     lockTransactionAction(transactionId),
   ]);
 
@@ -30,7 +30,8 @@ export default async function CashierTransactionDetailPage({
     <TransactionDetailView
       transaction={tx}
       lockResult={lockResult}
-      currentClerkDbId={currentClerk?.id ?? ""}
+      currentClerkDbId={isMasterActing ? "" : (currentClerk?.id ?? "")}
+      queuePath={`/${slug}/${token}/clerk/queue`}
     />
   );
 }

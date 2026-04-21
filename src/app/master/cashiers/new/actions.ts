@@ -2,7 +2,9 @@
 
 import { z } from "zod";
 import { createCashier } from "@/data/cashiers";
-import { isMasterAuthenticated } from "@/lib/master-auth";
+import { cloneCashierMethods } from "@/data/methods";
+import { getMasterSessionData, getMasterSessionFromCookies } from "@/lib/master-auth";
+import { toggleUserCashierPermission } from "@/data/master-users";
 import { redirect } from "next/navigation";
 import { randomBytes } from "crypto";
 
@@ -20,9 +22,12 @@ export async function createCashierAction(data: {
   clientUrl?: string;
   contactEmail?: string;
   contactPhone?: string;
+  cloneMethodsFrom?: string;
 }) {
-  const authenticated = await isMasterAuthenticated();
-  if (!authenticated) throw new Error("Unauthorized");
+  const token = await getMasterSessionFromCookies();
+  if (!token) throw new Error("Unauthorized");
+  const session = await getMasterSessionData(token);
+  if (!session) throw new Error("Unauthorized");
 
   const parsed = schema.safeParse(data);
   if (!parsed.success) {
@@ -30,26 +35,38 @@ export async function createCashierAction(data: {
   }
 
   const { name, slug, clientUrl, contactEmail, contactPhone } = parsed.data;
+  const { cloneMethodsFrom } = data;
 
   // Generate a 7-character alphanumeric token
-  const token = randomBytes(4).toString("hex").slice(0, 7).toUpperCase();
+  const cashierToken = randomBytes(4).toString("hex").slice(0, 7).toUpperCase();
 
+  let cashierId: string;
   try {
-    await createCashier({
+    const cashier = await createCashier({
       name,
       slug,
-      token,
+      token: cashierToken,
       clientUrl: clientUrl || null,
       contactEmail: contactEmail || null,
       contactPhone: contactPhone || null,
       isActive: true,
     });
+    cashierId = cashier.id;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     if (message.includes("unique")) {
       return { error: "Slug already in use. Choose a different one." };
     }
     return { error: "Failed to create cashier" };
+  }
+
+  // Auto-grant access to the creating DB user (not ENV root, who always sees everything)
+  if (!session.isEnvRoot && session.masterUserId) {
+    await toggleUserCashierPermission(session.masterUserId, cashierId, true);
+  }
+
+  if (cloneMethodsFrom) {
+    await cloneCashierMethods(cloneMethodsFrom, cashierId);
   }
 
   redirect("/master/dashboard");

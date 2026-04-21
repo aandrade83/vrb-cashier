@@ -29,6 +29,7 @@ interface Props {
   completedDeposits: QueueTransaction[];
   completedPayouts: QueueTransaction[];
   currentClerkDbId: string;
+  basePath?: string;
 }
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -40,11 +41,21 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "dest
   cancelled: "destructive",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Preconfirmed",
+  in_progress: "In Progress",
+  approved: "Approved",
+  rejected: "Rejected",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
 export function QueueView({
   pending,
   completedDeposits,
   completedPayouts,
   currentClerkDbId,
+  basePath = "/clerk",
 }: Props) {
   const [completedType, setCompletedType] = useState<"deposit" | "payout">("deposit");
 
@@ -59,7 +70,7 @@ export function QueueView({
     else if (isOtherLock) { label = "Take Over"; variant = "outline"; }
 
     return (
-      <Link href={`/clerk/queue/${tx.id}`} className={cn(buttonVariants({ variant, size: "sm" }))}>
+      <Link href={`${basePath}/queue/${tx.id}`} className={cn(buttonVariants({ variant, size: "sm" }))}>
         {label}
       </Link>
     );
@@ -117,7 +128,7 @@ export function QueueView({
                     <TableCell>{renderTypeBadge(tx.type)}</TableCell>
                     <TableCell className="text-sm">{tx.methodName}</TableCell>
                     <TableCell className="text-sm">
-                      {[tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || tx.playerEmail}
+                      {tx.playerUsername || [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || tx.playerEmail}
                     </TableCell>
                     <TableCell className="text-sm font-medium">{tx.currency} {tx.amount}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -125,7 +136,7 @@ export function QueueView({
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[tx.status] ?? "secondary"} className="capitalize">
-                        {tx.status.replace("_", " ")}
+                        {STATUS_LABEL[tx.status] ?? tx.status.replace("_", " ")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{renderHandledBy(tx)}</TableCell>
@@ -178,7 +189,7 @@ export function QueueView({
                     <TableCell className="font-mono text-sm">{tx.referenceCode}</TableCell>
                     <TableCell className="text-sm">{tx.methodName}</TableCell>
                     <TableCell className="text-sm">
-                      {[tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || tx.playerEmail}
+                      {tx.playerUsername || [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || tx.playerEmail}
                     </TableCell>
                     <TableCell className="text-sm font-medium">{tx.currency} {tx.amount}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -186,7 +197,7 @@ export function QueueView({
                     </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[tx.status] ?? "secondary"} className="capitalize">
-                        {tx.status.replace("_", " ")}
+                        {STATUS_LABEL[tx.status] ?? tx.status.replace("_", " ")}
                       </Badge>
                     </TableCell>
                   </TableRow>

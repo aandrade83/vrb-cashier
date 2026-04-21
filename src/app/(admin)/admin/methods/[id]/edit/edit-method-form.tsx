@@ -358,7 +358,17 @@ function FieldEditor({
   );
 }
 
-export function EditMethodForm({ method, successRedirect }: { method: MethodWithFields; successRedirect?: string }) {
+type ActionResult = { success: true; methodId?: string } | { success: false; error: string };
+
+export function EditMethodForm({
+  method,
+  successRedirect,
+  updateAction,
+}: {
+  method: MethodWithFields;
+  successRedirect?: string;
+  updateAction?: (id: string, data: unknown) => Promise<ActionResult>;
+}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -445,7 +455,7 @@ export function EditMethodForm({ method, successRedirect }: { method: MethodWith
     setError(null);
     setPending(true);
 
-    const result = await updateMethodAction(method.id, {
+    const result = await (updateAction ?? updateMethodAction)(method.id, {
       name,
       type,
       description: description || null,

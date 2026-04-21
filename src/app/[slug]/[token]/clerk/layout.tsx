@@ -1,7 +1,8 @@
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/UserMenu";
+import { MasterExitButton } from "@/components/MasterExitButton";
 import Link from "next/link";
-import { getUserSession } from "@/lib/auth/session";
+import { getUserSession, getMasterSession } from "@/lib/auth/session";
 import { db } from "@/db";
 import { cashierUsers } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -16,7 +17,13 @@ export default async function CashierClerkLayout({
   const { slug, token } = await params;
   const base = `/${slug}/${token}/clerk`;
 
-  const userSession = await getUserSession();
+  const [userSession, masterSession] = await Promise.all([
+    getUserSession(),
+    getMasterSession(),
+  ]);
+
+  const isMasterActing =
+    masterSession?.type === "master" && !!masterSession.actingCashierId;
 
   let username = "";
   if (userSession?.type === "cashier") {
@@ -30,6 +37,14 @@ export default async function CashierClerkLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      {isMasterActing && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between text-sm text-amber-800">
+          <span>
+            You are acting as <strong>Clerk</strong> for this cashier.
+          </span>
+          <MasterExitButton />
+        </div>
+      )}
       <header className="border-b px-6 py-3 flex items-center justify-between">
         <nav className="flex gap-6">
           <Link
@@ -47,7 +62,7 @@ export default async function CashierClerkLayout({
         </nav>
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          {username && <UserMenu username={username} slug={slug} token={token} />}
+          {!isMasterActing && username && <UserMenu username={username} slug={slug} token={token} />}
         </div>
       </header>
       <main className="flex-1 p-6">{children}</main>

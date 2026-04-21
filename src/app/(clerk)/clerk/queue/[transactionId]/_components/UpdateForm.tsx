@@ -16,9 +16,10 @@ import { updateTransactionStatusAction } from "../../actions";
 interface Props {
   transactionId: string;
   ownsLock: boolean;
+  queuePath?: string;
 }
 
-export function UpdateForm({ transactionId, ownsLock }: Props) {
+export function UpdateForm({ transactionId, ownsLock, queuePath = "/clerk/queue" }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [newStatus, setNewStatus] = useState("");
@@ -43,7 +44,7 @@ export function UpdateForm({ transactionId, ownsLock }: Props) {
       });
 
       if (result.success) {
-        router.push("/clerk/queue");
+        router.push(queuePath);
       } else {
         setError(result.error);
       }

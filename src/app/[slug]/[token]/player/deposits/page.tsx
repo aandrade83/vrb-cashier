@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getActiveDepositMethods } from "@/data/methods";
 import { getPlayerById, getPlayerTransactions } from "@/data/transactions";
 import { STATUS_LABELS } from "@/data/admin-transactions";
-import { getUserSession } from "@/lib/auth/session";
+import { getCashierPageAccess } from "@/lib/auth/cashier-access";
+import { getCashier } from "@/lib/cashier-context";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
@@ -24,18 +25,20 @@ export default async function CashierDepositsPage({
   params: Promise<{ slug: string; token: string }>;
 }) {
   const { slug, token } = await params;
-  const session = await getUserSession();
+  const [access, cashier] = await Promise.all([
+    getCashierPageAccess("player"),
+    getCashier(),
+  ]);
 
-  if (!session || session.role !== "player") {
-    redirect(`/${slug}/${token}/sign-in`);
-  }
+  if (!access) redirect(`/${slug}/${token}/sign-in`);
+  if (!cashier.depositsEnabled) redirect(`/${slug}/${token}/player/dashboard`);
 
-  const { userId, cashierId } = session;
+  const { userId, cashierId } = access;
   const base = `/${slug}/${token}/player`;
 
   const [methods, player] = await Promise.all([
     getActiveDepositMethods(cashierId),
-    getPlayerById(userId, cashierId),
+    userId ? getPlayerById(userId, cashierId) : Promise.resolve(null),
   ]);
 
   const recentTx = player ? (await getPlayerTransactions(player.id, cashierId)).slice(0, 5) : [];

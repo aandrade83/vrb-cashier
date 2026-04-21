@@ -2,14 +2,12 @@
 
 import { z } from "zod";
 import { getCashierId } from "@/lib/cashier-context";
-import { getUserSession } from "@/lib/auth/session";
+import { getSessionForCashier } from "@/lib/auth/session";
 import { createUser, getUserByUsername } from "@/data/users";
 import { hashPassword } from "@/lib/auth/password";
 
 const createUserSchema = z.object({
-  username: z.string().min(3).max(64).regex(/^[a-z0-9._-]+$/, {
-    message: "Username may only contain lowercase letters, numbers, dots, underscores, and hyphens.",
-  }),
+  username: z.string().min(3).max(64),
   password: z.string().min(8),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
@@ -21,12 +19,11 @@ type CreateUserInput = z.infer<typeof createUserSchema>;
 type ActionResult = { success: true } | { success: false; error: string };
 
 export async function createUserAction(data: CreateUserInput): Promise<ActionResult> {
-  const session = await getUserSession();
-  if (!session || session.role !== "admin") {
+  const cashierId = await getCashierId();
+  const access = await getSessionForCashier(cashierId);
+  if (!access || access.role !== "admin") {
     return { success: false, error: "Unauthorized" };
   }
-
-  const cashierId = await getCashierId();
 
   const parsed = createUserSchema.safeParse(data);
   if (!parsed.success) {
@@ -51,7 +48,7 @@ export async function createUserAction(data: CreateUserInput): Promise<ActionRes
     email: email || undefined,
     firstName: firstName || undefined,
     lastName: lastName || undefined,
-    createdByAdminId: session.userId,
+    createdByAdminId: access.userId ?? undefined,
   });
 
   return { success: true };

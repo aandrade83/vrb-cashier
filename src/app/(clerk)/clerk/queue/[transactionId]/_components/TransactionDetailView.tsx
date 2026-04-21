@@ -27,6 +27,7 @@ interface Props {
   transaction: TransactionDetail;
   lockResult: LockResult;
   currentClerkDbId: string;
+  queuePath?: string;
 }
 
 const STATUS_VARIANT: Record<
@@ -41,10 +42,20 @@ const STATUS_VARIANT: Record<
   cancelled: "destructive",
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Preconfirmed",
+  in_progress: "In Progress",
+  approved: "Approved",
+  rejected: "Rejected",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
 export function TransactionDetailView({
   transaction: tx,
   lockResult,
   currentClerkDbId,
+  queuePath = "/clerk/queue",
 }: Props) {
   const ownsLock =
     lockResult.acquired && lockResult.lockedByClerkId === currentClerkDbId;
@@ -53,7 +64,7 @@ export function TransactionDetailView({
     <div className="space-y-4">
       {/* Back link */}
       <Link
-        href="/clerk/queue"
+        href={queuePath}
         className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
       >
         ← Back to Queue
@@ -83,7 +94,7 @@ export function TransactionDetailView({
                   variant={STATUS_VARIANT[tx.status] ?? "secondary"}
                   className="capitalize"
                 >
-                  {tx.status.replace("_", " ")}
+                  {STATUS_LABEL[tx.status] ?? tx.status.replace("_", " ")}
                 </Badge>
               </div>
             </CardHeader>
@@ -238,6 +249,7 @@ export function TransactionDetailView({
                 lockResult={lockResult}
                 transactionId={tx.id}
                 currentClerkDbId={currentClerkDbId}
+                queuePath={queuePath}
               />
             </CardContent>
           </Card>
@@ -247,7 +259,7 @@ export function TransactionDetailView({
               <CardTitle className="text-base">Update Transaction</CardTitle>
             </CardHeader>
             <CardContent>
-              <UpdateForm transactionId={tx.id} ownsLock={ownsLock} />
+              <UpdateForm transactionId={tx.id} ownsLock={ownsLock} queuePath={queuePath} />
             </CardContent>
           </Card>
         </div>

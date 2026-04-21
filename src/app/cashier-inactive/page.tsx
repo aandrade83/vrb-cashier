@@ -4,8 +4,7 @@ export default function CashierInactivePage() {
       <div className="max-w-sm w-full text-center space-y-4">
         <h1 className="text-2xl font-bold">Cashier Unavailable</h1>
         <p className="text-muted-foreground">
-          Este cajero se encuentra desactivado. Por favor contacte a Administración
-          para más información.
+          This cashier is currently inactive. Please contact Administration for more information.
         </p>
       </div>
     </div>

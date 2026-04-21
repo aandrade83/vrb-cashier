@@ -25,6 +25,11 @@ export default async function CashierAdminLayout({
   const isMasterActing =
     masterSession?.type === "master" && !!masterSession.actingCashierId;
 
+  const actingRoleLabel =
+    masterSession?.type === "master" && masterSession.actingRole
+      ? masterSession.actingRole.charAt(0).toUpperCase() + masterSession.actingRole.slice(1)
+      : "Admin";
+
   let username = "";
   if (userSession?.type === "cashier") {
     const [user] = await db
@@ -38,13 +43,8 @@ export default async function CashierAdminLayout({
   const navItems = [
     { label: "Dashboard", href: `${base}/dashboard` },
     { label: "Users", href: `${base}/users` },
-    { label: "Methods", href: `${base}/methods` },
-    { label: "Clerks", href: `${base}/clerks` },
-    { label: "Players", href: `${base}/players` },
     { label: "Deposits", href: `${base}/deposits` },
     { label: "Payouts", href: `${base}/payouts` },
-    { label: "Names", href: `${base}/names` },
-    { label: "Addresses", href: `${base}/addresses` },
   ];
 
   return (
@@ -52,7 +52,7 @@ export default async function CashierAdminLayout({
       {isMasterActing && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between text-sm text-amber-800">
           <span>
-            You are acting as <strong>Admin</strong> for this cashier.
+            You are acting as <strong>{actingRoleLabel}</strong> for this cashier.
           </span>
           <MasterExitButton />
         </div>

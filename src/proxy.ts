@@ -1,25 +1,21 @@
 // =============================================================================
-// VRB Cashier — Middleware (internal auth, no Clerk)
+// VRB Cashier — Proxy (Next.js 16 edge proxy)
+//
+// Uses direct Neon SQL (HTTP transport) instead of internal self-fetches,
+// which fail on Vercel preview deployments.
 //
 // Route hierarchy:
-//   /master/*                    → Master auth gate (cookie presence check only;
-//                                  DB validation happens in server components)
-//   /{slug}/{token}/sign-in      → Public (redirect to home if already authenticated)
-//   /{slug}/{token}/admin/*      → Requires admin role (or master acting as admin)
+//   /master/*                    → Cookie-presence gate; DB validation in pages
+//   /{slug}/{token}/sign-in      → Public; redirect if already authenticated
+//   /{slug}/{token}/admin/*      → Requires admin role (or master acting)
 //   /{slug}/{token}/clerk/*      → Requires clerk role
 //   /{slug}/{token}/player/*     → Requires player role
-//   /api/auth/*                  → Public (login/logout endpoints)
-//   /api/master/*                → Public (master login/logout)
-//   /api/cashier/*               → Public (cashier validation)
-//   /api/cron/*                  → Public (cron endpoints)
-//   /api/upload                  → Auth enforced inside route handler
+//   /api/auth/*, /api/master/*   → Public
 //   /cashier-inactive, /         → Public
-//
-// Cashier resolution: slug + token → cashierId injected via request headers
-// so Server Components never trust URL params for tenant identity.
 // =============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { neon } from "@neondatabase/serverless";
 import {
   CASHIER_ID_HEADER,
   CASHIER_SLUG_HEADER,
@@ -28,7 +24,7 @@ import {
 import { USER_SESSION_COOKIE, MASTER_SESSION_COOKIE } from "@/lib/auth/constants";
 
 // ---------------------------------------------------------------------------
-// In-memory cashier cache — avoids a DB round-trip on every request
+// In-memory cashier cache — survives across warm Edge invocations
 // ---------------------------------------------------------------------------
 
 interface CachedCashier {
@@ -42,36 +38,28 @@ interface CachedCashier {
 const cashierCache = new Map<string, CachedCashier>();
 const CACHE_TTL_MS = 60_000;
 
-async function resolveCashier(
-  slug: string,
-  token: string,
-  baseUrl: string,
-): Promise<CachedCashier | null> {
+async function resolveCashier(slug: string, token: string): Promise<CachedCashier | null> {
   const cacheKey = `${slug}:${token}`;
   const cached = cashierCache.get(cacheKey);
-
-  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
-    return cached;
-  }
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached;
 
   try {
-    const res = await fetch(
-      `${baseUrl}/api/cashier/validate?slug=${encodeURIComponent(slug)}&token=${encodeURIComponent(token)}`,
-      { next: { revalidate: 0 } },
-    );
+    const sql = neon(process.env.DATABASE_URL!);
+    const rows = await sql`
+      SELECT id, slug, token, is_active
+      FROM cashiers
+      WHERE slug = ${slug} AND token = ${token}
+      LIMIT 1
+    `;
+    if (!rows[0]) return null;
 
-    if (!res.ok) return null;
-
-    const data = (await res.json()) as {
-      id: string;
-      slug: string;
-      token: string;
-      isActive: boolean;
+    const entry: CachedCashier = {
+      id: rows[0].id as string,
+      slug: rows[0].slug as string,
+      token: rows[0].token as string,
+      isActive: rows[0].is_active as boolean,
+      cachedAt: Date.now(),
     };
-
-    if (!data.id) return null;
-
-    const entry: CachedCashier = { ...data, cachedAt: Date.now() };
     cashierCache.set(cacheKey, entry);
     return entry;
   } catch {
@@ -81,20 +69,21 @@ async function resolveCashier(
 
 async function validateUserSession(
   token: string,
-  baseUrl: string,
 ): Promise<{ valid: boolean; userId?: string; cashierId?: string; role?: string }> {
   try {
-    const res = await fetch(
-      `${baseUrl}/api/auth/validate-session?token=${encodeURIComponent(token)}`,
-      { next: { revalidate: 0 } },
-    );
-
-    if (!res.ok) return { valid: false };
-    return (await res.json()) as {
-      valid: boolean;
-      userId?: string;
-      cashierId?: string;
-      role?: string;
+    const sql = neon(process.env.DATABASE_URL!);
+    const rows = await sql`
+      SELECT user_id, cashier_id, role
+      FROM user_sessions
+      WHERE token = ${token} AND expires_at > NOW()
+      LIMIT 1
+    `;
+    if (!rows[0]) return { valid: false };
+    return {
+      valid: true,
+      userId: rows[0].user_id as string,
+      cashierId: rows[0].cashier_id as string,
+      role: rows[0].role as string,
     };
   } catch {
     return { valid: false };
@@ -108,15 +97,14 @@ function homeForRole(role: string, slug: string, token: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Middleware
+// Proxy
 // ---------------------------------------------------------------------------
 
-export default async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const baseUrl = req.nextUrl.origin;
 
   // ------------------------------------------------------------------
-  // 1. Fully public routes — no auth required
+  // 1. Fully public routes
   // ------------------------------------------------------------------
   if (
     pathname === "/" ||
@@ -126,25 +114,22 @@ export default async function middleware(req: NextRequest) {
     pathname.startsWith("/api/master/") ||
     pathname.startsWith("/api/cashier/") ||
     pathname.startsWith("/api/cron/") ||
-    pathname.startsWith("/api/upload")
+    pathname.startsWith("/api/upload") ||
+    pathname.startsWith("/api/migrate")
   ) {
     return NextResponse.next();
   }
 
   // ------------------------------------------------------------------
-  // 2. Master routes — cookie presence gate only
-  //    Full DB validation happens inside each server component.
+  // 2. Master routes — cookie-presence gate only
   // ------------------------------------------------------------------
   if (pathname.startsWith("/master")) {
-    if (pathname === "/master/login") {
-      return NextResponse.next();
-    }
+    if (pathname === "/master/login") return NextResponse.next();
 
     const hasCookie = !!req.cookies.get(MASTER_SESSION_COOKIE)?.value;
     if (!hasCookie) {
       return NextResponse.redirect(new URL("/master/login", req.url));
     }
-
     return NextResponse.next();
   }
 
@@ -152,106 +137,80 @@ export default async function middleware(req: NextRequest) {
   // 3. Cashier routes — /{slug}/{token}/...
   // ------------------------------------------------------------------
   const cashierRouteMatch = /^\/([^/]+)\/([^/]+)(\/.*)?$/.exec(pathname);
+  if (!cashierRouteMatch) return NextResponse.next();
 
-  if (cashierRouteMatch) {
-    const slug = cashierRouteMatch[1];
-    const token = cashierRouteMatch[2];
-    const rest = cashierRouteMatch[3] ?? "/";
+  const slug = cashierRouteMatch[1];
+  const token = cashierRouteMatch[2];
+  const rest = cashierRouteMatch[3] ?? "/";
 
-    const cashier = await resolveCashier(slug, token, baseUrl);
+  const cashier = await resolveCashier(slug, token);
+  if (!cashier) return NextResponse.redirect(new URL("/", req.url));
+  if (!cashier.isActive) return NextResponse.redirect(new URL("/cashier-inactive", req.url));
 
-    if (!cashier) {
-      return NextResponse.redirect(new URL("/", req.url));
-    }
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set(CASHIER_ID_HEADER, cashier.id);
+  requestHeaders.set(CASHIER_SLUG_HEADER, cashier.slug);
+  requestHeaders.set(CASHIER_TOKEN_HEADER, cashier.token);
 
-    if (!cashier.isActive) {
-      return NextResponse.redirect(new URL("/cashier-inactive", req.url));
-    }
-
-    const requestHeaders = new Headers(req.headers);
-    requestHeaders.set(CASHIER_ID_HEADER, cashier.id);
-    requestHeaders.set(CASHIER_SLUG_HEADER, cashier.slug);
-    requestHeaders.set(CASHIER_TOKEN_HEADER, cashier.token);
-
-    // Sign-in page is public (but redirect if already authenticated)
-    if (rest === "/sign-in" || rest.startsWith("/sign-in/")) {
-      const sessionToken = req.cookies.get(USER_SESSION_COOKIE)?.value;
-      if (sessionToken) {
-        const sessionData = await validateUserSession(sessionToken, baseUrl);
-        if (sessionData.valid && sessionData.cashierId === cashier.id && sessionData.role) {
-          return NextResponse.redirect(
-            new URL(homeForRole(sessionData.role, slug, token), req.url),
-          );
-        }
-      }
-      return NextResponse.next({ request: { headers: requestHeaders } });
-    }
-
-    const roleRequired = rest.startsWith("/admin")
-      ? "admin"
-      : rest.startsWith("/clerk")
-      ? "clerk"
-      : rest.startsWith("/player")
-      ? "player"
-      : null;
-
-    if (!roleRequired) {
-      return NextResponse.next({ request: { headers: requestHeaders } });
-    }
-
-    // Master acting as admin for this cashier — cookie presence is enough here;
-    // the page will verify the session properly.
-    const masterToken = req.cookies.get(MASTER_SESSION_COOKIE)?.value;
-    if (masterToken && roleRequired === "admin") {
-      // Let through — admin page validates master session against DB.
-      return NextResponse.next({ request: { headers: requestHeaders } });
-    }
-
+  // Sign-in page — public, redirect if already authenticated
+  if (rest === "/sign-in" || rest.startsWith("/sign-in/")) {
     const sessionToken = req.cookies.get(USER_SESSION_COOKIE)?.value;
-
-    if (!sessionToken) {
-      return NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url),
-      );
+    if (sessionToken) {
+      const sessionData = await validateUserSession(sessionToken);
+      if (sessionData.valid && sessionData.cashierId === cashier.id && sessionData.role) {
+        return NextResponse.redirect(
+          new URL(homeForRole(sessionData.role, slug, token), req.url),
+        );
+      }
     }
-
-    const sessionData = await validateUserSession(sessionToken, baseUrl);
-
-    if (!sessionData.valid) {
-      const response = NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url),
-      );
-      response.cookies.delete(USER_SESSION_COOKIE);
-      return response;
-    }
-
-    if (sessionData.cashierId !== cashier.id) {
-      return NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url),
-      );
-    }
-
-    const effectiveRole = sessionData.role;
-
-    if (!effectiveRole) {
-      return NextResponse.redirect(
-        new URL(`/${slug}/${token}/sign-in`, req.url),
-      );
-    }
-
-    if (effectiveRole !== roleRequired) {
-      return NextResponse.redirect(
-        new URL(homeForRole(effectiveRole, slug, token), req.url),
-      );
-    }
-
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
-  // ------------------------------------------------------------------
-  // 4. Anything else — pass through (404 handled by Next.js)
-  // ------------------------------------------------------------------
-  return NextResponse.next();
+  const roleRequired = rest.startsWith("/admin")
+    ? "admin"
+    : rest.startsWith("/clerk")
+    ? "clerk"
+    : rest.startsWith("/player")
+    ? "player"
+    : null;
+
+  if (!roleRequired) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  // Master impersonating — cookie presence is enough; pages do full DB validation
+  const masterToken = req.cookies.get(MASTER_SESSION_COOKIE)?.value;
+  if (masterToken) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  const sessionToken = req.cookies.get(USER_SESSION_COOKIE)?.value;
+  if (!sessionToken) {
+    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+  }
+
+  const sessionData = await validateUserSession(sessionToken);
+  if (!sessionData.valid) {
+    const response = NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+    response.cookies.delete(USER_SESSION_COOKIE);
+    return response;
+  }
+
+  if (sessionData.cashierId !== cashier.id) {
+    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+  }
+
+  if (!sessionData.role) {
+    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+  }
+
+  if (sessionData.role !== roleRequired) {
+    return NextResponse.redirect(
+      new URL(homeForRole(sessionData.role, slug, token), req.url),
+    );
+  }
+
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

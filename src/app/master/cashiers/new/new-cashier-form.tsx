@@ -7,12 +7,24 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-export function NewCashierForm() {
+interface Props {
+  existingCashiers: { id: string; name: string }[];
+}
+
+export function NewCashierForm({ existingCashiers }: Props) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [slug, setSlug] = useState("");
+  const [cloneFrom, setCloneFrom] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -26,6 +38,7 @@ export function NewCashierForm() {
       clientUrl: form.get("clientUrl") as string,
       contactEmail: form.get("contactEmail") as string,
       contactPhone: form.get("contactPhone") as string,
+      cloneMethodsFrom: cloneFrom || undefined,
     });
 
     if (result?.error) {
@@ -66,7 +79,7 @@ export function NewCashierForm() {
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="clientUrl">Client Site URL (optional)</Label>
+            <Label htmlFor="clientUrl">Client Site URL</Label>
             <Input
               id="clientUrl"
               name="clientUrl"
@@ -87,6 +100,33 @@ export function NewCashierForm() {
             <Label htmlFor="contactPhone">Contact Phone (optional)</Label>
             <Input id="contactPhone" name="contactPhone" type="tel" />
           </div>
+
+          {existingCashiers.length > 0 && (
+            <div className="space-y-1">
+              <Label>Load Methods from (optional)</Label>
+              <Select
+                value={cloneFrom}
+                onValueChange={(v) => setCloneFrom(!v || v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {cloneFrom
+                      ? (existingCashiers.find((c) => c.id === cloneFrom)?.name ?? cloneFrom)
+                      : "Select a cashier to copy methods from"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— None —</SelectItem>
+                  {existingCashiers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Copies method assignments from the selected cashier into the new one.
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-2 pt-2">
             <Button type="submit" disabled={loading} className="flex-1">

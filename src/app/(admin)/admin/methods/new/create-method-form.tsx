@@ -86,7 +86,15 @@ function newField(order: number): FieldDef {
   };
 }
 
-export function CreateMethodForm({ successRedirect }: { successRedirect?: string } = {}) {
+type ActionResult = { success: true; methodId?: string } | { success: false; error: string };
+
+export function CreateMethodForm({
+  successRedirect,
+  saveAction,
+}: {
+  successRedirect?: string;
+  saveAction?: (data: unknown) => Promise<ActionResult>;
+} = {}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +112,7 @@ export function CreateMethodForm({ successRedirect }: { successRedirect?: string
   const [draftField, setDraftField] = useState<FieldDef>(() => newField(0));
   const [newOption, setNewOption] = useState("");
   const [showValidation, setShowValidation] = useState(false);
+  const [fieldError, setFieldError] = useState("");
 
   // Section C
   const [isActive, setIsActive] = useState(false);
@@ -128,18 +137,24 @@ export function CreateMethodForm({ successRedirect }: { successRedirect?: string
     setDraftField(newField(fields.length));
     setNewOption("");
     setShowValidation(false);
+    setFieldError("");
     setAddingField(true);
   }
 
   function cancelAddField() {
+    setFieldError("");
     setAddingField(false);
   }
 
   function commitField() {
     const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
-    if (!isSystem && !draftField.label.trim()) return;
+    if (!isSystem && !draftField.label.trim()) {
+      setFieldError("Label is required");
+      return;
+    }
     const label = isSystem ? FIELD_TYPE_LABELS[draftField.fieldType] : draftField.label;
     setFields((prev) => [...prev, { ...draftField, label, displayOrder: prev.length }]);
+    setFieldError("");
     setAddingField(false);
   }
 
@@ -193,7 +208,7 @@ export function CreateMethodForm({ successRedirect }: { successRedirect?: string
     setError(null);
     setPending(true);
 
-    const result = await createMethodAction({
+    const result = await (saveAction ?? createMethodAction)({
       name,
       type,
       description: description || null,
@@ -645,6 +660,7 @@ export function CreateMethodForm({ successRedirect }: { successRedirect?: string
               )}
 
               <Separator />
+              {fieldError && <p className="text-sm text-destructive">{fieldError}</p>}
               <div className="flex gap-2">
                 <Button type="button" size="sm" onClick={commitField}>
                   Add Field

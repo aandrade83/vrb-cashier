@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { getPlayerById, getPlayerTransactions } from "@/data/transactions";
 import { STATUS_LABELS } from "@/data/admin-transactions";
-import { getUserSession } from "@/lib/auth/session";
+import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
@@ -29,15 +29,15 @@ export default async function CashierTransactionsPage({
   params: Promise<{ slug: string; token: string }>;
 }) {
   const { slug, token } = await params;
-  const session = await getUserSession();
+  const access = await getCashierPageAccess("player");
 
-  if (!session || session.role !== "player") {
+  if (!access) {
     redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const { userId, cashierId } = session;
+  const { userId, cashierId } = access;
 
-  const player = await getPlayerById(userId, cashierId);
+  const player = userId ? await getPlayerById(userId, cashierId) : null;
   const txList = player ? await getPlayerTransactions(player.id, cashierId) : [];
 
   return (

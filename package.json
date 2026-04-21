@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:dev": "tsx scripts/seed-dev-users.ts"
+    "seed:dev": "tsx scripts/seed-dev-users.ts",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",

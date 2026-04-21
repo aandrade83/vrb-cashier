@@ -65,7 +65,7 @@ export function UsersTable({ users, currentUserId }: Props) {
       <TableHeader>
         <TableRow>
           <TableHead className="w-10"></TableHead>
-          <TableHead>Name</TableHead>
+          <TableHead>Account</TableHead>
           <TableHead>Role</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Created</TableHead>
@@ -102,10 +102,10 @@ export function UsersTable({ users, currentUserId }: Props) {
                   </Avatar>
                 </TableCell>
                 <TableCell>
-                  <p className="font-medium">
-                    {user.firstName} {user.lastName}
+                  <p className="font-medium">{user.username}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {[user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || ""}
                   </p>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
                 </TableCell>
                 <TableCell>
                   <Badge
