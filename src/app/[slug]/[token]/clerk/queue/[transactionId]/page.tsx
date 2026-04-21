@@ -3,6 +3,10 @@ import { getTransactionDetail, getClerkById } from "@/data/queue";
 import { lockTransactionAction } from "@/app/(clerk)/clerk/queue/actions";
 import { TransactionDetailView } from "@/app/(clerk)/clerk/queue/[transactionId]/_components/TransactionDetailView";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
+import { getMasterSession } from "@/lib/auth/session";
+import { db } from "@/db";
+import { masterUsers } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 export default async function CashierTransactionDetailPage({
   params,
@@ -12,11 +16,27 @@ export default async function CashierTransactionDetailPage({
   const { transactionId, slug, token } = await params;
 
   const access = await getCashierPageAccess("clerk");
-  if (!access) {
-    redirect(`/${slug}/${token}/sign-in`);
-  }
+  if (!access) redirect(`/${slug}/${token}/sign-in`);
 
   const { userId, cashierId, isMasterActing } = access;
+
+  // Resolve master_admin status for UI gates
+  let isMasterAdmin = false;
+  if (isMasterActing) {
+    const masterSession = await getMasterSession();
+    if (masterSession) {
+      if (!masterSession.masterUserId) {
+        isMasterAdmin = true; // ENV root = always master_admin
+      } else {
+        const [mu] = await db
+          .select({ role: masterUsers.role })
+          .from(masterUsers)
+          .where(eq(masterUsers.id, masterSession.masterUserId))
+          .limit(1);
+        isMasterAdmin = mu?.role === "master_admin";
+      }
+    }
+  }
 
   const [tx, currentClerk] = await Promise.all([
     getTransactionDetail(transactionId, cashierId),
@@ -44,11 +64,11 @@ export default async function CashierTransactionDetailPage({
           lockedAt: tx.lockedAt,
         },
       };
-    } else if (tx.status === "pending") {
+    } else if (tx.status === "unassigned") {
       // Truly unassigned — show Take Over
       lockResult = { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
     } else {
-      // Master previously took over (status advanced, no clerk lock) — grant access immediately
+      // Master previously took over (status advanced, no clerk lock) — grant access
       lockResult = { acquired: true, lockedByClerkId: "" };
       initialMasterHasTakenOver = true;
     }
@@ -63,6 +83,7 @@ export default async function CashierTransactionDetailPage({
       currentClerkDbId={isMasterActing ? "" : (currentClerk?.id ?? "")}
       queuePath={`/${slug}/${token}/clerk/queue`}
       isMasterActing={isMasterActing}
+      isMasterAdmin={isMasterAdmin}
       initialMasterHasTakenOver={initialMasterHasTakenOver}
     />
   );

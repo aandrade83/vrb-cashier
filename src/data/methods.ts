@@ -556,7 +556,7 @@ export async function deleteGlobalMethod(
     .where(
       and(
         eq(transactions.methodId, id),
-        inArray(transactions.status, ["approved", "rejected", "completed"]),
+        inArray(transactions.status, ["preconfirmed", "postconfirmed", "denied", "completed"]),
       ),
     );
 

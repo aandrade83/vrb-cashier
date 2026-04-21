@@ -81,7 +81,7 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
     .values({
       cashierId,
       type: "deposit",
-      status: "pending",
+      status: "unassigned",
       playerId: player.id,
       methodId,
       amount,

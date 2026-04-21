@@ -23,32 +23,13 @@ import {
 } from "@/components/ui/select";
 import type { MultiQueueTransaction } from "@/data/queue";
 import type { Cashier } from "@/db/schema";
+import { TX_STATUS_LABEL, TX_STATUS_BADGE_VARIANT } from "@/lib/transaction-statuses";
 
 interface Props {
   pending: MultiQueueTransaction[];
   completed: MultiQueueTransaction[];
   cashiers: Pick<Cashier, "id" | "name">[];
 }
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  pending: "secondary",
-  in_progress: "outline",
-  approved: "default",
-  post_confirmed: "default",
-  rejected: "destructive",
-  completed: "default",
-  cancelled: "destructive",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Unassigned",
-  in_progress: "Pending",
-  approved: "Pre-Confirmed",
-  post_confirmed: "Post-Confirmed",
-  rejected: "Rejected",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
 
 function TypeBadge({ type }: { type: string }) {
   return (
@@ -80,10 +61,10 @@ export function ClerkQueueView({ pending, completed, cashiers }: Props) {
   }
 
   const filtered = applyFilters(pending);
-  const unassigned = filtered.filter((tx) => tx.status === "pending");
-  const inProgress = filtered.filter((tx) => tx.status === "in_progress");
-  const preConfirmed = filtered.filter((tx) => tx.status === "approved");
-  const postConfirmed = filtered.filter((tx) => tx.status === "post_confirmed");
+  const unassigned    = filtered.filter((tx) => tx.status === "unassigned");
+  const inProgress    = filtered.filter((tx) => tx.status === "pending");
+  const preConfirmed  = filtered.filter((tx) => tx.status === "preconfirmed");
+  const postConfirmed = filtered.filter((tx) => tx.status === "postconfirmed");
   const filteredCompleted = applyFilters(completed);
 
   async function handleOpen(tx: MultiQueueTransaction) {
@@ -312,8 +293,8 @@ export function ClerkQueueView({ pending, completed, cashiers }: Props) {
                       {format(tx.createdAt, "do MMM yyyy")}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANT[tx.status] ?? "secondary"} className="capitalize">
-                        {STATUS_LABEL[tx.status] ?? tx.status.replace("_", " ")}
+                      <Badge variant={TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary"} className="capitalize">
+                        {TX_STATUS_LABEL[tx.status as keyof typeof TX_STATUS_LABEL] ?? tx.status}
                       </Badge>
                     </TableCell>
                   </TableRow>

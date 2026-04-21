@@ -9,25 +9,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getPendingTransactions, getCompletedTransactions } from "@/data/queue";
+import { getPendingTransactions, getRecentTransactions } from "@/data/queue";
 import { getCashierId } from "@/lib/cashier-context";
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  pending: "secondary",
-  in_progress: "outline",
-  approved: "default",
-  rejected: "destructive",
-  completed: "default",
-  cancelled: "destructive",
-};
+import { TX_STATUS_BADGE_VARIANT } from "@/lib/transaction-statuses";
 
 export default async function CashierAdminClerksPage() {
   const cashierId = await getCashierId();
 
   const [pending, completedDeposits, completedPayouts] = await Promise.all([
     getPendingTransactions(cashierId),
-    getCompletedTransactions(cashierId, "deposit", 10),
-    getCompletedTransactions(cashierId, "payout", 10),
+    getRecentTransactions(cashierId, ["completed"], "deposit", 10),
+    getRecentTransactions(cashierId, ["completed"], "payout", 10),
   ]);
 
   return (
@@ -81,13 +73,13 @@ export default async function CashierAdminClerksPage() {
                         {formatDistanceToNow(tx.createdAt, { addSuffix: true })}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={STATUS_VARIANT[tx.status] ?? "secondary"} className="capitalize">
+                        <Badge variant={TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary"} className="capitalize">
                           {tx.status.replace("_", " ")}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{handledBy}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {tx.lockExpiresAt ? format(tx.lockExpiresAt, "HH:mm") : "—"}
+                        {tx.lockedAt ? format(tx.lockedAt, "HH:mm") : "—"}
                       </TableCell>
                     </TableRow>
                   );
@@ -128,7 +120,7 @@ export default async function CashierAdminClerksPage() {
                     <TableCell className="text-sm font-medium">{tx.currency} {tx.amount}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(tx.createdAt, "do MMM yyyy")}</TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANT[tx.status] ?? "secondary"} className="capitalize">
+                      <Badge variant={TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary"} className="capitalize">
                         {tx.status.replace("_", " ")}
                       </Badge>
                     </TableCell>
@@ -170,7 +162,7 @@ export default async function CashierAdminClerksPage() {
                     <TableCell className="text-sm font-medium">{tx.currency} {tx.amount}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(tx.createdAt, "do MMM yyyy")}</TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANT[tx.status] ?? "secondary"} className="capitalize">
+                      <Badge variant={TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary"} className="capitalize">
                         {tx.status.replace("_", " ")}
                       </Badge>
                     </TableCell>

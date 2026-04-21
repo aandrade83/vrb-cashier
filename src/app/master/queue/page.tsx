@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getMasterSessionFromCookies, getMasterSessionData } from "@/lib/master-auth";
 import { getAllCashiers, getCashiersByIds } from "@/data/cashiers";
 import { getUserCashierPermissions } from "@/data/master-users";
-import { getPendingTransactionsMulti, getCompletedTransactionsMulti } from "@/data/queue";
+import { getPendingTransactionsMulti, getRecentTransactionsMulti } from "@/data/queue";
 import { MasterNav } from "@/components/master-nav";
 import { ClerkQueueView } from "@/app/master/clerk/queue/clerk-queue-view";
 import type { Cashier } from "@/db/schema";
@@ -30,7 +30,7 @@ export default async function MasterQueuePage() {
 
   const [pending, completed] = await Promise.all([
     cashierIds.length > 0 ? getPendingTransactionsMulti(cashierIds) : Promise.resolve([]),
-    cashierIds.length > 0 ? getCompletedTransactionsMulti(cashierIds, 40) : Promise.resolve([]),
+    cashierIds.length > 0 ? getRecentTransactionsMulti(cashierIds, 40) : Promise.resolve([]),
   ]);
 
   return (

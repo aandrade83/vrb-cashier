@@ -1,13 +1,11 @@
-// =============================================================================
 // Admin transaction queries — scoped to a cashier.
 // Covers deposits and payouts with status-based filtering.
 // Default filter: today.
-// =============================================================================
 
 import { db } from "@/db";
 import { transactions, cashierUsers, paymentMethods } from "@/db/schema";
 import { eq, and, inArray, gte, lte, desc, ilike } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { TX_STATUS_LABEL, TX_STATUS_BADGE_VARIANT, type TxStatus } from "@/lib/transaction-statuses";
 
 export type AdminTransaction = {
   id: string;
@@ -23,18 +21,12 @@ export type AdminTransaction = {
   createdAt: Date;
 };
 
-export type TransactionStatusFilter =
-  | "pending"        // pre_confirmed
-  | "in_progress"
-  | "approved"       // post_confirmed
-  | "rejected"       // denied
-  | "completed"
-  | "cancelled";
+export type TransactionStatusFilter = TxStatus;
 
 function todayRange(): { from: Date; to: Date } {
   const now = new Date();
   const from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const to   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   return { from, to };
 }
 
@@ -53,16 +45,7 @@ export async function getAdminTransactions({
   to?: Date;
   search?: string;
 }): Promise<AdminTransaction[]> {
-  // Default to today if no date range provided
   const range = from && to ? { from, to } : todayRange();
-
-  const conditions = [
-    eq(transactions.cashierId, cashierId),
-    eq(transactions.type, type),
-    inArray(transactions.status, statuses),
-    gte(transactions.createdAt, range.from),
-    lte(transactions.createdAt, range.to),
-  ];
 
   const rows = await db
     .select({
@@ -81,38 +64,30 @@ export async function getAdminTransactions({
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
-    .where(and(...conditions))
+    .where(and(
+      eq(transactions.cashierId, cashierId),
+      eq(transactions.type, type),
+      inArray(transactions.status, statuses),
+      gte(transactions.createdAt, range.from),
+      lte(transactions.createdAt, range.to),
+    ))
     .orderBy(desc(transactions.createdAt));
 
-  if (search) {
-    const q = search.toLowerCase();
-    return rows.filter(
-      (r) =>
-        r.referenceCode.toLowerCase().includes(q) ||
-        (r.playerEmail ?? "").toLowerCase().includes(q) ||
-        (r.playerFirstName ?? "").toLowerCase().includes(q) ||
-        (r.playerLastName ?? "").toLowerCase().includes(q)
-    );
-  }
+  if (!search) return rows;
 
-  return rows;
+  const q = search.toLowerCase();
+  return rows.filter(
+    (r) =>
+      r.referenceCode.toLowerCase().includes(q) ||
+      (r.playerEmail ?? "").toLowerCase().includes(q) ||
+      (r.playerFirstName ?? "").toLowerCase().includes(q) ||
+      (r.playerLastName ?? "").toLowerCase().includes(q),
+  );
 }
 
-// Status label mapping for UI display
-export const STATUS_LABELS: Record<string, string> = {
-  pending: "Pre-confirmed",
-  in_progress: "In Progress",
-  approved: "Post-confirmed",
-  rejected: "Denied",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
-
-export const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "outline",
-  in_progress: "secondary",
-  approved: "default",
-  rejected: "destructive",
-  completed: "default",
-  cancelled: "secondary",
-};
+// Re-export from centralized constants so existing consumers don't break
+export const STATUS_LABELS: Record<string, string> = TX_STATUS_LABEL;
+export const STATUS_BADGE_VARIANT: Record<
+  string,
+  "default" | "secondary" | "destructive" | "outline"
+> = TX_STATUS_BADGE_VARIANT;
