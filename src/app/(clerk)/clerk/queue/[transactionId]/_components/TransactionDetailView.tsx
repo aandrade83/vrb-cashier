@@ -30,6 +30,7 @@ interface Props {
   currentClerkDbId: string;
   queuePath?: string;
   isMasterActing?: boolean;
+  initialMasterHasTakenOver?: boolean;
 }
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -58,8 +59,9 @@ export function TransactionDetailView({
   currentClerkDbId,
   queuePath = "/clerk/queue",
   isMasterActing = false,
+  initialMasterHasTakenOver = false,
 }: Props) {
-  const [masterHasTakenOver, setMasterHasTakenOver] = useState(false);
+  const [masterHasTakenOver, setMasterHasTakenOver] = useState(initialMasterHasTakenOver);
   // After take over the DB status becomes in_progress; update client-side so UpdateForm shows correct options
   const [effectiveStatus, setEffectiveStatus] = useState(tx.status);
 

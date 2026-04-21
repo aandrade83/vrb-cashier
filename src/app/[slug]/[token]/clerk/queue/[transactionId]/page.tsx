@@ -25,12 +25,16 @@ export default async function CashierTransactionDetailPage({
 
   if (!tx) redirect(`/${slug}/${token}/clerk/queue`);
 
-  // For master: compute lock state from transaction data; never call lockTransactionAction
-  // (master has no cashierUsers record to lock with)
-  let lockResult: { acquired: true; lockedByClerkId: string } | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
+  type LockResult =
+    | { acquired: true; lockedByClerkId: string }
+    | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
+
+  let lockResult: LockResult;
+  let initialMasterHasTakenOver = false;
 
   if (isMasterActing) {
     if (tx.lockedByClerkId) {
+      // A real clerk holds the lock — master must Take Over
       lockResult = {
         acquired: false,
         lockedBy: {
@@ -40,11 +44,13 @@ export default async function CashierTransactionDetailPage({
           lockedAt: tx.lockedAt,
         },
       };
+    } else if (tx.status === "pending") {
+      // Truly unassigned — show Take Over
+      lockResult = { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
     } else {
-      lockResult = {
-        acquired: false,
-        lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null },
-      };
+      // Master previously took over (status advanced, no clerk lock) — grant access immediately
+      lockResult = { acquired: true, lockedByClerkId: "" };
+      initialMasterHasTakenOver = true;
     }
   } else {
     lockResult = await lockTransactionAction(transactionId);
@@ -57,6 +63,7 @@ export default async function CashierTransactionDetailPage({
       currentClerkDbId={isMasterActing ? "" : (currentClerk?.id ?? "")}
       queuePath={`/${slug}/${token}/clerk/queue`}
       isMasterActing={isMasterActing}
+      initialMasterHasTakenOver={initialMasterHasTakenOver}
     />
   );
 }
