@@ -79,7 +79,6 @@ export function CashierCard({ cashier, otherCashiers }: Props) {
       const data = await res.json();
       if (data.redirect) {
         router.push(data.redirect);
-        router.refresh();
       }
     } finally {
       setVisitLoading(null);
