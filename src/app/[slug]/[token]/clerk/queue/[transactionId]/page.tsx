@@ -18,10 +18,13 @@ export default async function CashierTransactionDetailPage({
 
   const { userId, cashierId, isMasterActing } = access;
 
+  // Master acting: skip DB lock acquisition — master always owns the session
+  const masterLockResult = { acquired: true as const, lockedByClerkId: "" };
+
   const [tx, currentClerk, lockResult] = await Promise.all([
     getTransactionDetail(transactionId, cashierId),
     userId ? getClerkById(userId, cashierId) : Promise.resolve(null),
-    lockTransactionAction(transactionId),
+    isMasterActing ? Promise.resolve(masterLockResult) : lockTransactionAction(transactionId),
   ]);
 
   if (!tx) redirect(`/${slug}/${token}/clerk/queue`);

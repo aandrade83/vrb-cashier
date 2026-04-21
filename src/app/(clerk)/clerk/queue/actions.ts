@@ -13,7 +13,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { getClerkById } from "@/data/queue";
 import { getCashierId } from "@/lib/cashier-context";
-import { getUserSession } from "@/lib/auth/session";
+import { getUserSession, getMasterSession } from "@/lib/auth/session";
 import { releasePoolLocks } from "@/data/names-pool";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -27,6 +27,11 @@ async function requireClerk(cashierId: string) {
   if (!session || session.role !== "clerk" || session.cashierId !== cashierId) return null;
   const clerk = await getClerkById(session.userId, cashierId);
   return clerk;
+}
+
+async function isMasterActingAsClerk(cashierId: string): Promise<boolean> {
+  const masterSession = await getMasterSession();
+  return !!(masterSession && masterSession.actingCashierId === cashierId && masterSession.actingRole === "clerk");
 }
 
 // ─── Lock ─────────────────────────────────────────────────────────────────────
@@ -182,8 +187,9 @@ export async function updateTransactionStatusAction(
   input: unknown
 ): Promise<ActionResult> {
   const cashierId = await getCashierId();
-  const clerk = await requireClerk(cashierId);
-  if (!clerk) return { success: false, error: "Unauthorized" };
+  const masterActing = await isMasterActingAsClerk(cashierId);
+  const clerk = masterActing ? null : await requireClerk(cashierId);
+  if (!masterActing && !clerk) return { success: false, error: "Unauthorized" };
 
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
@@ -207,7 +213,8 @@ export async function updateTransactionStatusAction(
 
   if (!tx) return { success: false, error: "Transaction not found" };
 
-  if (tx.lockedByClerkId !== clerk.id) {
+  // Master bypasses lock ownership check
+  if (!masterActing && tx.lockedByClerkId !== clerk!.id) {
     return { success: false, error: "You do not own the lock on this transaction." };
   }
 
@@ -235,7 +242,7 @@ export async function updateTransactionStatusAction(
     .values({
       cashierId,
       transactionId,
-      updatedByUserId: clerk.id,
+      updatedByUserId: clerk?.id ?? null,
       previousStatus: previousStatus as "pending" | "in_progress" | "approved" | "rejected" | "completed" | "cancelled",
       newStatus,
       noteToPlayer,
@@ -262,7 +269,7 @@ export async function updateTransactionStatusAction(
 
   await db.insert(auditLogs).values({
     cashierId,
-    actorUserId: clerk.id,
+    actorUserId: clerk?.id ?? null,
     actorRole: "clerk",
     action: "transaction.status_updated",
     entityType: "transaction",
@@ -270,8 +277,9 @@ export async function updateTransactionStatusAction(
     metadata: {
       previousStatus,
       newStatus,
-      clerkId: clerk.id,
-      clerkName: [clerk.firstName, clerk.lastName].filter(Boolean).join(" "),
+      clerkId: clerk?.id ?? null,
+      clerkName: clerk ? [clerk.firstName, clerk.lastName].filter(Boolean).join(" ") : "master",
+      isMasterActing: masterActing,
     },
   });
 

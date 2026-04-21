@@ -446,9 +446,8 @@ export const transactionUpdates = pgTable(
       .notNull()
       .references(() => transactions.id, { onDelete: "cascade" }),
 
-    // Who made the change (clerk or admin)
+    // Who made the change (clerk, admin, or null for master acting)
     updatedByUserId: uuid("updated_by_user_id")
-      .notNull()
       .references(() => cashierUsers.id),
 
     previousStatus: transactionStatusEnum("previous_status").notNull(),
