@@ -20,6 +20,8 @@ interface Props {
   queuePath?: string;
 }
 
+const TERMINAL_STATUSES = new Set(["completed", "rejected", "cancelled"]);
+
 const NEXT_STATUSES: Record<string, { value: string; label: string }[]> = {
   in_progress: [
     { value: "approved", label: "Pre-Confirmed" },
@@ -43,7 +45,7 @@ export function UpdateForm({ transactionId, currentStatus, ownsLock, queuePath =
   const [error, setError] = useState<string | null>(null);
 
   const allowedStatuses = NEXT_STATUSES[currentStatus] ?? [];
-  const isFinalized = allowedStatuses.length === 0;
+  const isFinalized = TERMINAL_STATUSES.has(currentStatus);
   const isValid = newStatus !== "" && noteToPlayer.trim().length >= 10;
 
   function handleSubmit(e: React.FormEvent) {

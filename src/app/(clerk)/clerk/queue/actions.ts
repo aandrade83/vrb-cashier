@@ -108,6 +108,34 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
 
 export async function takeOverTransactionAction(transactionId: string): Promise<ActionResult> {
   const cashierId = await getCashierId();
+  const masterActing = await isMasterActingAsClerk(cashierId);
+
+  if (masterActing) {
+    const [tx] = await db
+      .select({ lockedByClerkId: transactions.lockedByClerkId })
+      .from(transactions)
+      .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
+      .limit(1);
+
+    const now = new Date();
+    await db
+      .update(transactions)
+      .set({ lockedByClerkId: null, lockedAt: null, lockExpiresAt: null, status: "in_progress", updatedAt: now })
+      .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
+
+    await db.insert(auditLogs).values({
+      cashierId,
+      actorUserId: null,
+      action: "transaction.taken_over",
+      entityType: "transaction",
+      entityId: transactionId,
+      metadata: { previousClerkId: tx?.lockedByClerkId ?? null, isMasterActing: true },
+    });
+
+    revalidatePath("/clerk/queue");
+    return { success: true };
+  }
+
   const clerk = await requireClerk(cashierId);
   if (!clerk) return { success: false, error: "Unauthorized" };
 

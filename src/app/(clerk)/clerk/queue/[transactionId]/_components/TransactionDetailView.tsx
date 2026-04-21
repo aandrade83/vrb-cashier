@@ -60,6 +60,13 @@ export function TransactionDetailView({
   isMasterActing = false,
 }: Props) {
   const [masterHasTakenOver, setMasterHasTakenOver] = useState(false);
+  // After take over the DB status becomes in_progress; update client-side so UpdateForm shows correct options
+  const [effectiveStatus, setEffectiveStatus] = useState(tx.status);
+
+  function handleMasterTakeOver() {
+    setMasterHasTakenOver(true);
+    if (effectiveStatus === "pending") setEffectiveStatus("in_progress");
+  }
 
   const ownsLock = isMasterActing
     ? masterHasTakenOver
@@ -257,7 +264,7 @@ export function TransactionDetailView({
                 queuePath={queuePath}
                 isMasterActing={isMasterActing}
                 masterHasTakenOver={masterHasTakenOver}
-                onMasterTakeOver={() => setMasterHasTakenOver(true)}
+                onMasterTakeOver={handleMasterTakeOver}
               />
             </CardContent>
           </Card>
@@ -269,7 +276,7 @@ export function TransactionDetailView({
             <CardContent>
               <UpdateForm
                 transactionId={tx.id}
-                currentStatus={tx.status}
+                currentStatus={effectiveStatus}
                 ownsLock={ownsLock}
                 queuePath={queuePath}
               />
