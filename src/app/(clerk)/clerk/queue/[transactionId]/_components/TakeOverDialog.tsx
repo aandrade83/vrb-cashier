@@ -18,9 +18,10 @@ import { takeOverTransactionAction } from "../../actions";
 
 interface Props {
   transactionId: string;
+  onSuccess?: () => void;
 }
 
-export function TakeOverDialog({ transactionId }: Props) {
+export function TakeOverDialog({ transactionId, onSuccess }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -30,7 +31,11 @@ export function TakeOverDialog({ transactionId }: Props) {
       const result = await takeOverTransactionAction(transactionId);
       if (result.success) {
         setOpen(false);
-        router.refresh();
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          router.refresh();
+        }
       }
     });
   }

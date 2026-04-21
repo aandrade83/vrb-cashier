@@ -18,16 +18,37 @@ export default async function CashierTransactionDetailPage({
 
   const { userId, cashierId, isMasterActing } = access;
 
-  // Master acting: skip DB lock acquisition — master always owns the session
-  const masterLockResult = { acquired: true as const, lockedByClerkId: "" };
-
-  const [tx, currentClerk, lockResult] = await Promise.all([
+  const [tx, currentClerk] = await Promise.all([
     getTransactionDetail(transactionId, cashierId),
     userId ? getClerkById(userId, cashierId) : Promise.resolve(null),
-    isMasterActing ? Promise.resolve(masterLockResult) : lockTransactionAction(transactionId),
   ]);
 
   if (!tx) redirect(`/${slug}/${token}/clerk/queue`);
+
+  // For master: compute lock state from transaction data; never call lockTransactionAction
+  // (master has no cashierUsers record to lock with)
+  let lockResult: { acquired: true; lockedByClerkId: string } | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
+
+  if (isMasterActing) {
+    if (tx.lockedByClerkId) {
+      lockResult = {
+        acquired: false,
+        lockedBy: {
+          id: tx.lockedByClerkId,
+          firstName: tx.lockedByClerkFirstName,
+          lastName: tx.lockedByClerkLastName,
+          lockedAt: tx.lockedAt,
+        },
+      };
+    } else {
+      lockResult = {
+        acquired: false,
+        lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null },
+      };
+    }
+  } else {
+    lockResult = await lockTransactionAction(transactionId);
+  }
 
   return (
     <TransactionDetailView
@@ -35,6 +56,7 @@ export default async function CashierTransactionDetailPage({
       lockResult={lockResult}
       currentClerkDbId={isMasterActing ? "" : (currentClerk?.id ?? "")}
       queuePath={`/${slug}/${token}/clerk/queue`}
+      isMasterActing={isMasterActing}
     />
   );
 }

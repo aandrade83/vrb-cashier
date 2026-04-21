@@ -15,11 +15,26 @@ import { updateTransactionStatusAction } from "../../actions";
 
 interface Props {
   transactionId: string;
+  currentStatus: string;
   ownsLock: boolean;
   queuePath?: string;
 }
 
-export function UpdateForm({ transactionId, ownsLock, queuePath = "/clerk/queue" }: Props) {
+const NEXT_STATUSES: Record<string, { value: string; label: string }[]> = {
+  in_progress: [
+    { value: "approved", label: "Pre-Confirmed" },
+    { value: "rejected", label: "Rejected" },
+  ],
+  approved: [
+    { value: "post_confirmed", label: "Post-Confirmed" },
+    { value: "rejected", label: "Rejected" },
+  ],
+  post_confirmed: [
+    { value: "completed", label: "Completed" },
+  ],
+};
+
+export function UpdateForm({ transactionId, currentStatus, ownsLock, queuePath = "/clerk/queue" }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [newStatus, setNewStatus] = useState("");
@@ -27,8 +42,9 @@ export function UpdateForm({ transactionId, ownsLock, queuePath = "/clerk/queue"
   const [internalNote, setInternalNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const isValid =
-    newStatus !== "" && noteToPlayer.trim().length >= 10;
+  const allowedStatuses = NEXT_STATUSES[currentStatus] ?? [];
+  const isFinalized = allowedStatuses.length === 0;
+  const isValid = newStatus !== "" && noteToPlayer.trim().length >= 10;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,11 +69,19 @@ export function UpdateForm({ transactionId, ownsLock, queuePath = "/clerk/queue"
 
   const disabled = !ownsLock || isPending;
 
+  if (isFinalized) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This transaction is finalized and cannot be updated.
+      </p>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {!ownsLock && (
         <p className="text-sm text-muted-foreground">
-          You must own the lock to update this transaction.
+          Take over the transaction to update it.
         </p>
       )}
 
@@ -69,13 +93,14 @@ export function UpdateForm({ transactionId, ownsLock, queuePath = "/clerk/queue"
           disabled={disabled}
         >
           <SelectTrigger id="newStatus">
-            <SelectValue placeholder="Select a status…" />
+            <SelectValue placeholder="Select a status…">
+              {newStatus ? (allowedStatuses.find(s => s.value === newStatus)?.label ?? newStatus) : "Select a status…"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="in_progress">In Progress</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
+            {allowedStatuses.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -89,7 +114,7 @@ export function UpdateForm({ transactionId, ownsLock, queuePath = "/clerk/queue"
           id="noteToPlayer"
           value={noteToPlayer}
           onChange={(e) => setNoteToPlayer(e.target.value)}
-          placeholder="Message sent to the player via email…"
+          placeholder="Message sent to the player…"
           rows={4}
           disabled={disabled}
           required
@@ -101,7 +126,7 @@ export function UpdateForm({ transactionId, ownsLock, queuePath = "/clerk/queue"
       <div className="space-y-2">
         <Label htmlFor="internalNote">
           Internal Note{" "}
-          <span className="text-muted-foreground text-xs">(optional, not shown to player)</span>
+          <span className="text-muted-foreground text-xs">(optional)</span>
         </Label>
         <textarea
           id="internalNote"

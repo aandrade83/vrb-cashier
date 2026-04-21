@@ -51,12 +51,13 @@ export const fieldTypeEnum = pgEnum("field_type", [
 ]);
 
 export const transactionStatusEnum = pgEnum("transaction_status", [
-  "pending", // submitted by player, no clerk assigned (UI: pre_confirmed)
-  "in_progress", // clerk locked and is working on it
-  "approved", // clerk approved (UI: post_confirmed)
-  "rejected", // clerk rejected (UI: denied)
-  "completed", // fully processed and closed
-  "cancelled", // cancelled by player before processing
+  "pending",        // Unassigned — submitted by player, no clerk yet
+  "in_progress",    // Pending — clerk has taken over
+  "approved",       // Pre-Confirmed
+  "post_confirmed", // Post-Confirmed
+  "rejected",       // Rejected
+  "completed",      // Completed — fully processed
+  "cancelled",      // Cancelled by player
 ]);
 
 // =============================================================================

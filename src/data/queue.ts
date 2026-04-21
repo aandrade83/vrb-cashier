@@ -63,7 +63,7 @@ export async function getPendingTransactions(cashierId: string): Promise<QueueTr
     .where(
       and(
         eq(transactions.cashierId, cashierId),
-        inArray(transactions.status, ["pending", "in_progress"])
+        inArray(transactions.status, ["pending", "in_progress", "approved", "post_confirmed"])
       )
     )
     .orderBy(asc(transactions.createdAt));
@@ -107,7 +107,7 @@ export async function getCompletedTransactions(
     .where(
       and(
         eq(transactions.cashierId, cashierId),
-        inArray(transactions.status, ["approved", "rejected", "completed"]),
+        inArray(transactions.status, ["completed", "rejected"]),
         eq(transactions.type, type)
       )
     )
@@ -286,7 +286,7 @@ export async function getPendingTransactionsMulti(
     .where(
       and(
         inArray(transactions.cashierId, cashierIds),
-        inArray(transactions.status, ["pending", "in_progress"]),
+        inArray(transactions.status, ["pending", "in_progress", "approved", "post_confirmed"]),
       ),
     )
     .orderBy(asc(transactions.createdAt));
@@ -333,7 +333,7 @@ export async function getCompletedTransactionsMulti(
     .where(
       and(
         inArray(transactions.cashierId, cashierIds),
-        inArray(transactions.status, ["approved", "rejected", "completed"]),
+        inArray(transactions.status, ["completed", "rejected"]),
       ),
     )
     .orderBy(desc(transactions.createdAt))

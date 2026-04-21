@@ -176,12 +176,12 @@ export async function renewLockAction(transactionId: string): Promise<ActionResu
 
 const updateSchema = z.object({
   transactionId: z.string().uuid(),
-  newStatus: z.enum(["in_progress", "approved", "rejected", "completed"]),
+  newStatus: z.enum(["approved", "post_confirmed", "rejected", "completed"]),
   noteToPlayer: z.string().min(10, "Note to player must be at least 10 characters"),
   internalNote: z.string().optional(),
 });
 
-const TERMINAL_STATUSES = ["completed", "rejected"];
+const TERMINAL_STATUSES = ["completed", "rejected", "cancelled"];
 
 export async function updateTransactionStatusAction(
   input: unknown

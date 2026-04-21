@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -28,24 +29,24 @@ interface Props {
   lockResult: LockResult;
   currentClerkDbId: string;
   queuePath?: string;
+  isMasterActing?: boolean;
 }
 
-const STATUS_VARIANT: Record<
-  string,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   pending: "secondary",
   in_progress: "outline",
   approved: "default",
+  post_confirmed: "default",
   rejected: "destructive",
   completed: "default",
   cancelled: "destructive",
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Preconfirmed",
-  in_progress: "In Progress",
-  approved: "Approved",
+  pending: "Unassigned",
+  in_progress: "Pending",
+  approved: "Pre-Confirmed",
+  post_confirmed: "Post-Confirmed",
   rejected: "Rejected",
   completed: "Completed",
   cancelled: "Cancelled",
@@ -56,9 +57,13 @@ export function TransactionDetailView({
   lockResult,
   currentClerkDbId,
   queuePath = "/clerk/queue",
+  isMasterActing = false,
 }: Props) {
-  const ownsLock =
-    lockResult.acquired && lockResult.lockedByClerkId === currentClerkDbId;
+  const [masterHasTakenOver, setMasterHasTakenOver] = useState(false);
+
+  const ownsLock = isMasterActing
+    ? masterHasTakenOver
+    : lockResult.acquired && lockResult.lockedByClerkId === currentClerkDbId;
 
   return (
     <div className="space-y-4">
@@ -219,10 +224,10 @@ export function TransactionDetailView({
                         </p>
                         <p className="capitalize">
                           <span className="text-muted-foreground">
-                            {upd.previousStatus.replace("_", " ")}
+                            {STATUS_LABEL[upd.previousStatus] ?? upd.previousStatus.replace("_", " ")}
                           </span>
                           {" → "}
-                          <strong>{upd.newStatus.replace("_", " ")}</strong>
+                          <strong>{STATUS_LABEL[upd.newStatus] ?? upd.newStatus.replace("_", " ")}</strong>
                         </p>
                         {upd.noteToPlayer && (
                           <p className="text-muted-foreground">
@@ -250,6 +255,9 @@ export function TransactionDetailView({
                 transactionId={tx.id}
                 currentClerkDbId={currentClerkDbId}
                 queuePath={queuePath}
+                isMasterActing={isMasterActing}
+                masterHasTakenOver={masterHasTakenOver}
+                onMasterTakeOver={() => setMasterHasTakenOver(true)}
               />
             </CardContent>
           </Card>
@@ -259,7 +267,12 @@ export function TransactionDetailView({
               <CardTitle className="text-base">Update Transaction</CardTitle>
             </CardHeader>
             <CardContent>
-              <UpdateForm transactionId={tx.id} ownsLock={ownsLock} queuePath={queuePath} />
+              <UpdateForm
+                transactionId={tx.id}
+                currentStatus={tx.status}
+                ownsLock={ownsLock}
+                queuePath={queuePath}
+              />
             </CardContent>
           </Card>
         </div>

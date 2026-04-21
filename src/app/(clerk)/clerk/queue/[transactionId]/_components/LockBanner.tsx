@@ -24,20 +24,32 @@ interface Props {
   transactionId: string;
   currentClerkDbId: string;
   queuePath?: string;
+  isMasterActing?: boolean;
+  masterHasTakenOver?: boolean;
+  onMasterTakeOver?: () => void;
 }
 
-export function LockBanner({ lockResult, transactionId, currentClerkDbId, queuePath = "/clerk/queue" }: Props) {
+export function LockBanner({
+  lockResult,
+  transactionId,
+  currentClerkDbId,
+  queuePath = "/clerk/queue",
+  isMasterActing = false,
+  masterHasTakenOver = false,
+  onMasterTakeOver,
+}: Props) {
   useEffect(() => {
     if (!lockResult.acquired) return;
 
     const interval = setInterval(() => {
       renewLockAction(transactionId);
-    }, 10 * 60 * 1000); // every 10 minutes
+    }, 10 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, [lockResult.acquired, transactionId]);
 
-  if (lockResult.acquired) {
+  // Master who has taken over — show green banner
+  if (isMasterActing && masterHasTakenOver) {
     return (
       <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
         You are handling this transaction.
@@ -45,7 +57,48 @@ export function LockBanner({ lockResult, transactionId, currentClerkDbId, queueP
     );
   }
 
-  const { lockedBy } = lockResult;
+  // Real clerk owns the lock
+  if (lockResult.acquired && !isMasterActing) {
+    return (
+      <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        You are handling this transaction.
+      </div>
+    );
+  }
+
+  // Master acting — show Take Over (with context message)
+  if (isMasterActing) {
+    const lockedBy = lockResult.acquired ? null : lockResult.lockedBy;
+    const hasClerkLock = lockedBy && lockedBy.id !== "";
+    const holderName = hasClerkLock
+      ? [lockedBy.firstName, lockedBy.lastName].filter(Boolean).join(" ") || "a clerk"
+      : null;
+    const lockedAtStr = hasClerkLock && lockedBy.lockedAt
+      ? new Date(lockedBy.lockedAt).toLocaleTimeString()
+      : null;
+
+    return (
+      <div className="rounded-md border border-yellow-300 bg-yellow-50 px-4 py-3 space-y-3">
+        <p className="text-sm text-yellow-800">
+          {hasClerkLock
+            ? <>Being handled by <strong>{holderName}</strong>{lockedAtStr ? ` since ${lockedAtStr}` : ""}. Take over to reassign.</>
+            : "No clerk assigned yet. Take over to start processing."}
+        </p>
+        <div className="flex gap-2">
+          <TakeOverDialog transactionId={transactionId} onSuccess={onMasterTakeOver} />
+          <Link
+            href={queuePath}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            Back to Queue
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular clerk — someone else has the lock
+  const { lockedBy } = lockResult as { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
   const holderName =
     [lockedBy.firstName, lockedBy.lastName].filter(Boolean).join(" ") ||
     "another clerk";

@@ -36,15 +36,17 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "dest
   pending: "secondary",
   in_progress: "outline",
   approved: "default",
+  post_confirmed: "default",
   rejected: "destructive",
   completed: "default",
   cancelled: "destructive",
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Preconfirmed",
-  in_progress: "In Progress",
-  approved: "Approved",
+  pending: "Unassigned",
+  in_progress: "Pending",
+  approved: "Pre-Confirmed",
+  post_confirmed: "Post-Confirmed",
   rejected: "Rejected",
   completed: "Completed",
   cancelled: "Cancelled",
@@ -99,7 +101,7 @@ export function QueueView({
       {/* ── Pending / In Progress ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Pending &amp; In Progress</CardTitle>
+          <CardTitle className="text-base">Active Transactions</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {pending.length === 0 ? (
