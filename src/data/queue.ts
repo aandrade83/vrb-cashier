@@ -29,6 +29,7 @@ export type QueueTransaction = {
   lockedByClerkId: string | null;
   lockedByClerkFirstName: string | null;
   lockedByClerkLastName: string | null;
+  lockedByClerkUsername: string | null;
   lockedAt: Date | null;
   createdAt: Date;
 };
@@ -49,6 +50,7 @@ function queueSelect(clerkUser: ReturnType<typeof alias>) {
     lockedByClerkId: transactions.lockedByClerkId,
     lockedByClerkFirstName: clerkUser.firstName,
     lockedByClerkLastName: clerkUser.lastName,
+    lockedByClerkUsername: clerkUser.username,
     lockedAt: transactions.lockedAt,
     createdAt: transactions.createdAt,
   };
@@ -107,6 +109,7 @@ export type TransactionDetail = {
   lockedByClerkId: string | null;
   lockedByClerkFirstName: string | null;
   lockedByClerkLastName: string | null;
+  lockedByClerkUsername: string | null;
   lockedAt: Date | null;
   assignedAt: Date | null;
   preconfirmedAt: Date | null;
@@ -163,6 +166,7 @@ export async function getTransactionDetail(
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
+      lockedByClerkUsername: clerkUser.username,
       lockedAt: transactions.lockedAt,
       assignedAt: transactions.assignedAt,
       preconfirmedAt: transactions.preconfirmedAt,
@@ -285,9 +289,15 @@ export async function getRecentTransactionsMulti(
 export async function getClerkById(
   userId: string,
   cashierId: string,
-): Promise<{ id: string; firstName: string | null; lastName: string | null } | null> {
+): Promise<{ id: string; firstName: string | null; lastName: string | null; username: string; role: string } | null> {
   const [row] = await db
-    .select({ id: cashierUsers.id, firstName: cashierUsers.firstName, lastName: cashierUsers.lastName })
+    .select({
+      id: cashierUsers.id,
+      firstName: cashierUsers.firstName,
+      lastName: cashierUsers.lastName,
+      username: cashierUsers.username,
+      role: cashierUsers.role,
+    })
     .from(cashierUsers)
     .where(and(eq(cashierUsers.id, userId), eq(cashierUsers.cashierId, cashierId)))
     .limit(1);

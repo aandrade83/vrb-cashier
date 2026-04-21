@@ -71,7 +71,8 @@ export function QueueView({
 
   function renderHandledBy(tx: QueueTransaction) {
     if (!tx.lockedByClerkId) return "—";
-    return [tx.lockedByClerkFirstName, tx.lockedByClerkLastName].filter(Boolean).join(" ") || "—";
+    const name = [tx.lockedByClerkFirstName, tx.lockedByClerkLastName].filter(Boolean).join(" ");
+    return name || tx.lockedByClerkUsername || "—";
   }
 
   function TypeBadge({ type }: { type: string }) {

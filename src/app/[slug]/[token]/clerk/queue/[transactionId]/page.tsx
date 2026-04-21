@@ -47,10 +47,10 @@ export default async function CashierTransactionDetailPage({
 
   type LockResult =
     | { acquired: true; lockedByClerkId: string }
-    | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
+    | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; username: string | null; lockedAt: Date | null } };
 
   let lockResult: LockResult;
-  let initialMasterHasTakenOver = false;
+  const initialMasterHasTakenOver = false;
 
   if (isMasterActing) {
     if (tx.lockedByClerkId) {
@@ -61,16 +61,16 @@ export default async function CashierTransactionDetailPage({
           id: tx.lockedByClerkId,
           firstName: tx.lockedByClerkFirstName,
           lastName: tx.lockedByClerkLastName,
+          username: tx.lockedByClerkUsername ?? null,
           lockedAt: tx.lockedAt,
         },
       };
     } else if (tx.status === "unassigned") {
       // Truly unassigned — show Take Over
-      lockResult = { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
+      lockResult = { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, username: null, lockedAt: null } };
     } else {
-      // Master previously took over (status advanced, no clerk lock) — grant access
+      // No clerk lock, status is active — master can view/act
       lockResult = { acquired: true, lockedByClerkId: "" };
-      initialMasterHasTakenOver = true;
     }
   } else {
     lockResult = await lockTransactionAction(transactionId);

@@ -4,7 +4,7 @@ import { MasterExitButton } from "@/components/MasterExitButton";
 import Link from "next/link";
 import { getUserSession, getMasterSession } from "@/lib/auth/session";
 import { db } from "@/db";
-import { cashierUsers } from "@/db/schema";
+import { cashierUsers, masterUsers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export default async function CashierClerkLayout({
@@ -26,7 +26,19 @@ export default async function CashierClerkLayout({
     masterSession?.type === "master" && !!masterSession.actingCashierId;
 
   let username = "";
-  if (userSession?.type === "cashier") {
+  let masterUsername = "";
+  if (isMasterActing && masterSession) {
+    if (!masterSession.masterUserId) {
+      masterUsername = "ENV Root";
+    } else {
+      const [mu] = await db
+        .select({ username: masterUsers.username })
+        .from(masterUsers)
+        .where(eq(masterUsers.id, masterSession.masterUserId))
+        .limit(1);
+      masterUsername = mu?.username ?? "";
+    }
+  } else if (userSession?.type === "cashier") {
     const [user] = await db
       .select({ username: cashierUsers.username })
       .from(cashierUsers)
@@ -40,7 +52,8 @@ export default async function CashierClerkLayout({
       {isMasterActing && (
         <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center justify-between text-sm text-amber-800">
           <span>
-            You are acting as <strong>Clerk</strong> for this cashier.
+            Acting as <strong>Clerk</strong> for this cashier
+            {masterUsername ? <> — <strong>@{masterUsername}</strong></> : null}
           </span>
           <MasterExitButton />
         </div>

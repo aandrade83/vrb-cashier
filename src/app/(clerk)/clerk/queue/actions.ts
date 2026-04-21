@@ -22,7 +22,7 @@ type ActionResult = { success: true } | { success: false; error: string };
 
 type LockResult =
   | { acquired: true; lockedByClerkId: string }
-  | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null } };
+  | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; username: string | null; lockedAt: Date | null } };
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ async function getActingMasterRole(cashierId: string): Promise<"master_admin" | 
 export async function lockTransactionAction(transactionId: string): Promise<LockResult> {
   const cashierId = await getCashierId();
   const clerk = await requireClerk(cashierId);
-  if (!clerk) return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
+  if (!clerk) return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, username: null, lockedAt: null } };
 
   const [tx] = await db
     .select({
@@ -68,7 +68,7 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
     .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
     .limit(1);
 
-  if (!tx) return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, lockedAt: null } };
+  if (!tx) return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, username: null, lockedAt: null } };
 
   const isFree = !tx.lockedByClerkId;
   const isOwnLock = tx.lockedByClerkId === clerk.id;
@@ -98,7 +98,9 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
         entityId: transactionId,
         metadata: {
           clerkId: clerk.id,
-          clerkName: [clerk.firstName, clerk.lastName].filter(Boolean).join(" "),
+          clerkName: [clerk.firstName, clerk.lastName].filter(Boolean).join(" ") || clerk.username,
+          changed_by_username: clerk.username,
+          changed_by_role: clerk.role,
         },
       });
     }
@@ -108,7 +110,7 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
 
   // Transaction is locked by a different clerk — return their info
   const [lockHolder] = await db
-    .select({ id: cashierUsers.id, firstName: cashierUsers.firstName, lastName: cashierUsers.lastName })
+    .select({ id: cashierUsers.id, firstName: cashierUsers.firstName, lastName: cashierUsers.lastName, username: cashierUsers.username })
     .from(cashierUsers)
     .where(eq(cashierUsers.id, tx.lockedByClerkId!))
     .limit(1);
@@ -125,6 +127,7 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
       id: lockHolder?.id ?? "",
       firstName: lockHolder?.firstName ?? null,
       lastName: lockHolder?.lastName ?? null,
+      username: lockHolder?.username ?? null,
       lockedAt: txFull?.lockedAt ?? null,
     },
   };
@@ -138,6 +141,21 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
   const now = new Date();
 
   if (masterActing) {
+    const masterSession = await getMasterSession();
+    const masterRole = await getActingMasterRole(cashierId);
+
+    let masterUsername: string | null = null;
+    if (masterSession?.masterUserId) {
+      const [mu] = await db
+        .select({ username: masterUsers.username })
+        .from(masterUsers)
+        .where(eq(masterUsers.id, masterSession.masterUserId))
+        .limit(1);
+      masterUsername = mu?.username ?? null;
+    } else if (masterSession) {
+      masterUsername = "ENV Root";
+    }
+
     const [tx] = await db
       .select({ lockedByClerkId: transactions.lockedByClerkId, status: transactions.status })
       .from(transactions)
@@ -162,6 +180,7 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
     await db.insert(auditLogs).values({
       cashierId,
       actorUserId: null,
+      actorRole: null,
       action: "transaction.taken_over",
       entityType: "transaction",
       entityId: transactionId,
@@ -169,6 +188,9 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
         previousAssignedUserId: tx.lockedByClerkId ?? null,
         newAssignedUserId: null,
         isMasterActing: true,
+        masterRole,
+        changed_by_username: masterUsername,
+        changed_by_role: masterRole ?? "master_clerk",
         takenOverAt: now.toISOString(),
       },
     });
@@ -211,7 +233,9 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
     metadata: {
       previousAssignedUserId: tx.lockedByClerkId ?? null,
       newAssignedUserId: clerk.id,
-      newAssignedUserName: [clerk.firstName, clerk.lastName].filter(Boolean).join(" "),
+      newAssignedUserName: [clerk.firstName, clerk.lastName].filter(Boolean).join(" ") || clerk.username,
+      changed_by_username: clerk.username,
+      changed_by_role: clerk.role,
       takenOverAt: now.toISOString(),
     },
   });
@@ -240,6 +264,22 @@ export async function updateTransactionStatusAction(input: unknown): Promise<Act
   const masterActing = await isMasterActingAsClerk(cashierId);
   const masterRole = masterActing ? await getActingMasterRole(cashierId) : null;
   const clerk = masterActing ? null : await requireClerk(cashierId);
+
+  // Resolve master username for audit log
+  let masterUsername: string | null = null;
+  if (masterActing) {
+    const masterSession = await getMasterSession();
+    if (masterSession?.masterUserId) {
+      const [mu] = await db
+        .select({ username: masterUsers.username })
+        .from(masterUsers)
+        .where(eq(masterUsers.id, masterSession.masterUserId))
+        .limit(1);
+      masterUsername = mu?.username ?? null;
+    } else if (masterSession) {
+      masterUsername = "ENV Root";
+    }
+  }
 
   if (!masterActing && !clerk) return { success: false, error: "Unauthorized" };
 
@@ -295,10 +335,8 @@ export async function updateTransactionStatusAction(input: unknown): Promise<Act
       internalNote: internalNote ?? null,
       ...(newStatus === "denied" ? { deniedReason: deniedReason ?? null } : {}),
       ...statusTimestamps,
-      // Clear lock on every status update
-      lockedByClerkId: null,
-      lockedAt: null,
-      lockExpiresAt: null,
+      // Only clear lock on terminal statuses; non-terminal keeps the clerk assigned
+      ...(isTerminal ? { lockedByClerkId: null, lockedAt: null, lockExpiresAt: null } : {}),
       updatedAt: now,
     })
     .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
@@ -336,7 +374,7 @@ export async function updateTransactionStatusAction(input: unknown): Promise<Act
   await db.insert(auditLogs).values({
     cashierId,
     actorUserId: clerk?.id ?? null,
-    actorRole: "clerk",
+    actorRole: masterActing ? null : "clerk",
     action: "transaction.status_updated",
     entityType: "transaction",
     entityId: transactionId,
@@ -344,9 +382,11 @@ export async function updateTransactionStatusAction(input: unknown): Promise<Act
       previousStatus,
       newStatus,
       clerkId: clerk?.id ?? null,
-      clerkName: clerk ? [clerk.firstName, clerk.lastName].filter(Boolean).join(" ") : "master",
+      clerkName: clerk ? ([clerk.firstName, clerk.lastName].filter(Boolean).join(" ") || clerk.username) : null,
       isMasterActing: masterActing,
       masterRole,
+      changed_by_username: masterActing ? masterUsername : (clerk?.username ?? null),
+      changed_by_role: masterActing ? (masterRole ?? "master_clerk") : (clerk?.role ?? "clerk"),
     },
   });
 

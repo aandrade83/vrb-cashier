@@ -13,6 +13,7 @@ type LockResult =
         id: string;
         firstName: string | null;
         lastName: string | null;
+        username: string | null;
         lockedAt: Date | null;
       };
     };
@@ -59,7 +60,7 @@ export function LockBanner({
     const lockedBy = lockResult.acquired ? null : lockResult.lockedBy;
     const hasClerkLock = lockedBy && lockedBy.id !== "";
     const holderName = hasClerkLock
-      ? [lockedBy.firstName, lockedBy.lastName].filter(Boolean).join(" ") || "a clerk"
+      ? ([lockedBy.firstName, lockedBy.lastName].filter(Boolean).join(" ") || lockedBy.username || "a clerk")
       : null;
     const lockedAtStr =
       hasClerkLock && lockedBy.lockedAt ? new Date(lockedBy.lockedAt).toLocaleTimeString() : null;
@@ -89,10 +90,10 @@ export function LockBanner({
   // Regular clerk — someone else holds the lock
   const { lockedBy } = lockResult as {
     acquired: false;
-    lockedBy: { id: string; firstName: string | null; lastName: string | null; lockedAt: Date | null };
+    lockedBy: { id: string; firstName: string | null; lastName: string | null; username: string | null; lockedAt: Date | null };
   };
   const holderName =
-    [lockedBy.firstName, lockedBy.lastName].filter(Boolean).join(" ") || "another clerk";
+    [lockedBy.firstName, lockedBy.lastName].filter(Boolean).join(" ") || lockedBy.username || "another clerk";
   const lockedAtStr = lockedBy.lockedAt
     ? new Date(lockedBy.lockedAt).toLocaleTimeString()
     : "unknown time";

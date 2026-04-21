@@ -54,7 +54,7 @@ export default async function CashierAdminClerksPage() {
               <TableBody>
                 {pending.map((tx) => {
                   const handledBy = tx.lockedByClerkId
-                    ? [tx.lockedByClerkFirstName, tx.lockedByClerkLastName].filter(Boolean).join(" ") || "—"
+                    ? ([tx.lockedByClerkFirstName, tx.lockedByClerkLastName].filter(Boolean).join(" ") || tx.lockedByClerkUsername || "—")
                     : "—";
                   return (
                     <TableRow key={tx.id}>

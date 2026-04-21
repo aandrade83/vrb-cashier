@@ -21,6 +21,7 @@ type LockResult =
         id: string;
         firstName: string | null;
         lastName: string | null;
+        username: string | null;
         lockedAt: Date | null;
       };
     };
