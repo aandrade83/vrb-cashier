@@ -4,6 +4,7 @@ import { MasterLogoutButton } from "@/app/master/dashboard/logout-button";
 const NAV_ITEMS = [
   { key: "cashiers", label: "Cashiers", href: "/master/dashboard" },
   { key: "queue", label: "Queue", href: "/master/queue" },
+  { key: "reports", label: "Reports", href: "/master/clerk/reports" },
   { key: "users", label: "Users", href: "/master/users" },
   { key: "methods", label: "Methods", href: "/master/methods" },
   { key: "names", label: "Names", href: "/master/names" },

@@ -10,6 +10,8 @@ import {
 } from "@/data/transactions";
 import { getMethodWithFields } from "@/data/methods";
 import { getUserSession } from "@/lib/auth/session";
+import { getCashierPageAccess } from "@/lib/auth/cashier-access";
+import { getOrCreateShadowPlayer } from "@/lib/master-actor";
 import { assignName, assignAddress } from "@/data/names-pool";
 
 type ActionResult = { success: true; transactionId: string } | { success: false; error: string };
@@ -35,12 +37,26 @@ const submitDepositSchema = z.object({
 });
 
 export async function submitDepositAction(data: unknown): Promise<ActionResult> {
-  const session = await getUserSession();
-  if (!session || session.role !== "player") {
-    return { success: false, error: "Unauthorized" };
-  }
+  let userId: string;
+  let cashierId: string;
 
-  const { userId, cashierId } = session;
+  const userSession = await getUserSession();
+  if (userSession && userSession.role === "player") {
+    userId = userSession.userId;
+    cashierId = userSession.cashierId;
+  } else {
+    // Support master acting as player (e.g. testing from master dashboard)
+    const access = await getCashierPageAccess("player");
+    if (!access) return { success: false, error: "Unauthorized" };
+    cashierId = access.cashierId;
+    if (access.userId) {
+      userId = access.userId;
+    } else {
+      const shadow = await getOrCreateShadowPlayer(cashierId);
+      if (!shadow) return { success: false, error: "Unauthorized" };
+      userId = shadow.id;
+    }
+  }
 
   const parsed = submitDepositSchema.safeParse(data);
   if (!parsed.success) {

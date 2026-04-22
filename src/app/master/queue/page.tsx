@@ -19,9 +19,10 @@ export default async function MasterQueuePage() {
   if (session.role === "master_clerk") redirect("/master/clerk/queue");
 
   let cashierList: Cashier[];
-  if (session.isEnvRoot || !session.masterUserId) {
+  if (session.isEnvRoot || !session.masterUserId || session.role === "master_admin") {
     cashierList = await getAllCashiers();
   } else {
+    // master_clerk: scoped to permitted cashiers only
     const permittedIds = await getUserCashierPermissions(session.masterUserId);
     cashierList = permittedIds.length > 0 ? await getCashiersByIds(permittedIds) : [];
   }
