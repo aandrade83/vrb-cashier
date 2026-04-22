@@ -55,10 +55,10 @@ export function LockBanner({
     );
   }
 
-  // Master acting — show Take Over option with context
-  if (isMasterActing) {
-    const lockedBy = lockResult.acquired ? null : lockResult.lockedBy;
-    const hasClerkLock = lockedBy && lockedBy.id !== "";
+  // Master acting with a clerk holding the lock — offer Take Over
+  if (isMasterActing && !lockResult.acquired) {
+    const lockedBy = lockResult.lockedBy;
+    const hasClerkLock = lockedBy.id !== "";
     const holderName = hasClerkLock
       ? ([lockedBy.firstName, lockedBy.lastName].filter(Boolean).join(" ") || lockedBy.username || "a clerk")
       : null;
@@ -71,18 +71,34 @@ export function LockBanner({
           {hasClerkLock ? (
             <>
               Being handled by <strong>{holderName}</strong>
-              {lockedAtStr ? ` since ${lockedAtStr}` : ""}. Take over to reassign.
+              {lockedAtStr ? ` since ${lockedAtStr}` : ""}. Take over to release the clerk lock.
             </>
           ) : (
-            "No clerk assigned yet. Take over to start processing."
+            "No clerk assigned yet."
           )}
         </p>
-        <div className="flex gap-2">
-          <TakeOverDialog transactionId={transactionId} onSuccess={onMasterTakeOver} />
+        {hasClerkLock && (
+          <div className="flex gap-2">
+            <TakeOverDialog transactionId={transactionId} onSuccess={onMasterTakeOver} />
+            <Link href={queuePath} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+              Back to Queue
+            </Link>
+          </div>
+        )}
+        {!hasClerkLock && (
           <Link href={queuePath} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
             Back to Queue
           </Link>
-        </div>
+        )}
+      </div>
+    );
+  }
+
+  // Master acting with no clerk lock — can view and act directly
+  if (isMasterActing && lockResult.acquired) {
+    return (
+      <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        You are reviewing this transaction as master. No clerk lock is held.
       </div>
     );
   }

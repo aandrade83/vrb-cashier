@@ -77,16 +77,23 @@ export async function lockTransactionAction(transactionId: string): Promise<Lock
     const now = new Date();
     const isFirstAssignment = isFree && !isOwnLock && tx.status === "unassigned";
 
-    await db
+    const lockUpdated = await db
       .update(transactions)
       .set({
         lockedByClerkId: clerk.id,
         lockedAt: now,
-        lockExpiresAt: null, // no auto-expiry: locks are permanent until takeover
+        lockExpiresAt: null,
         ...(isFirstAssignment ? { status: "pending", assignedAt: now } : {}),
         updatedAt: now,
       })
-      .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
+      .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
+      .returning({ id: transactions.id });
+
+    console.log("[lock] transactionId=%s cashierId=%s clerkId=%s isFirstAssignment=%s rowsAffected=%d", transactionId, cashierId, clerk.id, isFirstAssignment, lockUpdated.length);
+
+    if (lockUpdated.length === 0) {
+      return { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, username: null, lockedAt: null } };
+    }
 
     if (isFirstAssignment) {
       await db.insert(auditLogs).values({
@@ -166,7 +173,7 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
 
     const wasUnassigned = tx.status === "unassigned";
 
-    await db
+    const masterUpdated = await db
       .update(transactions)
       .set({
         lockedByClerkId: null,
@@ -175,7 +182,14 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
         ...(wasUnassigned ? { status: "pending", assignedAt: now } : {}),
         updatedAt: now,
       })
-      .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
+      .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
+      .returning({ id: transactions.id });
+
+    console.log("[takeOver/master] transactionId=%s cashierId=%s masterUsername=%s rowsAffected=%d", transactionId, cashierId, masterUsername, masterUpdated.length);
+
+    if (masterUpdated.length === 0) {
+      return { success: false, error: "Transaction not found or cashier mismatch — no rows updated." };
+    }
 
     await db.insert(auditLogs).values({
       cashierId,
@@ -196,11 +210,13 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
     });
 
     revalidatePath("/clerk/queue");
+    revalidatePath(`/clerk/queue/${transactionId}`);
     return { success: true };
   }
 
   const clerk = await requireClerk(cashierId);
-  if (!clerk) return { success: false, error: "Unauthorized" };
+  console.log("[takeOver/clerk] transactionId=%s cashierId=%s clerkId=%s", transactionId, cashierId, clerk?.id ?? "null — requireClerk returned null");
+  if (!clerk) return { success: false, error: "Unauthorized — clerk session not found for this cashier." };
 
   const [tx] = await db
     .select({ lockedByClerkId: transactions.lockedByClerkId, status: transactions.status })
@@ -208,11 +224,11 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
     .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
     .limit(1);
 
-  if (!tx) return { success: false, error: "Transaction not found" };
+  if (!tx) return { success: false, error: "Transaction not found." };
 
   const wasUnassigned = tx.status === "unassigned";
 
-  await db
+  const clerkUpdated = await db
     .update(transactions)
     .set({
       lockedByClerkId: clerk.id,
@@ -221,7 +237,14 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
       ...(wasUnassigned ? { status: "pending", assignedAt: now } : {}),
       updatedAt: now,
     })
-    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)));
+    .where(and(eq(transactions.id, transactionId), eq(transactions.cashierId, cashierId)))
+    .returning({ id: transactions.id });
+
+  console.log("[takeOver/clerk] rowsAffected=%d lockedByClerkId=%s", clerkUpdated.length, clerk.id);
+
+  if (clerkUpdated.length === 0) {
+    return { success: false, error: "Transaction not found or cashier mismatch — no rows updated." };
+  }
 
   await db.insert(auditLogs).values({
     cashierId,
@@ -241,6 +264,7 @@ export async function takeOverTransactionAction(transactionId: string): Promise<
   });
 
   revalidatePath("/clerk/queue");
+  revalidatePath(`/clerk/queue/${transactionId}`);
   return { success: true };
 }
 
