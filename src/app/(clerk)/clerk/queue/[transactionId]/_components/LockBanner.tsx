@@ -94,11 +94,11 @@ export function LockBanner({
     );
   }
 
-  // Master acting with no clerk lock — can view and act directly
+  // Master has the lock (acquired=true) but client state hasn't caught up yet — treat as handling
   if (isMasterActing && lockResult.acquired) {
     return (
-      <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        You are reviewing this transaction as master. No clerk lock is held.
+      <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        You are handling this transaction.
       </div>
     );
   }

@@ -58,12 +58,10 @@ export function QueueView({
   const deniedRows    = deniedType    === "deposit" ? deniedDeposits    : deniedPayouts;
 
   function renderActionCell(tx: QueueTransaction) {
-    const isOwnLock   = tx.lockedByClerkId === currentClerkDbId && currentClerkDbId !== "";
-    const isOtherLock = tx.lockedByClerkId !== null && !isOwnLock;
-    const label   = isOwnLock ? "Continue" : isOtherLock ? "Take Over" : "Open";
-    const variant: "default" | "outline" = isOtherLock ? "outline" : "default";
+    const isOwnLock = tx.lockedByClerkId === currentClerkDbId && currentClerkDbId !== "";
+    const label = isOwnLock ? "Continue" : "Open";
     return (
-      <Link href={`${basePath}/queue/${tx.id}`} className={cn(buttonVariants({ variant, size: "sm" }))}>
+      <Link href={`${basePath}/queue/${tx.id}`} className={cn(buttonVariants({ variant: "default", size: "sm" }))}>
         {label}
       </Link>
     );

@@ -72,6 +72,12 @@ export default async function CashierClerkLayout({
           >
             Players
           </Link>
+          <Link
+            href={`${base}/reports`}
+            className="text-sm font-medium hover:text-primary transition-colors"
+          >
+            Reports
+          </Link>
         </nav>
         <div className="flex items-center gap-3">
           <ThemeToggle />

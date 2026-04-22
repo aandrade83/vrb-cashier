@@ -51,7 +51,6 @@ export function UpdateForm({
 
   const isValid =
     newStatus !== "" &&
-    noteToPlayer.trim().length >= 10 &&
     (!isDenying || deniedReason.trim().length >= 3);
 
   function handleSubmit(e: React.FormEvent) {
@@ -137,17 +136,15 @@ export function UpdateForm({
 
       <div className="space-y-2">
         <Label htmlFor="noteToPlayer">
-          Note to Player <span className="text-muted-foreground text-xs">(required, min 10 chars)</span>
+          Note to Player <span className="text-muted-foreground text-xs">(optional)</span>
         </Label>
         <textarea
           id="noteToPlayer"
           value={noteToPlayer}
           onChange={(e) => setNoteToPlayer(e.target.value)}
-          placeholder="Message sent to the player…"
+          placeholder="Message for the player (optional — email notifications coming soon)…"
           rows={4}
           disabled={disabled}
-          required
-          minLength={10}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none disabled:opacity-50"
         />
       </div>

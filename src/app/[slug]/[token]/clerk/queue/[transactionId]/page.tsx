@@ -4,6 +4,7 @@ import { lockTransactionAction } from "@/app/(clerk)/clerk/queue/actions";
 import { TransactionDetailView } from "@/app/(clerk)/clerk/queue/[transactionId]/_components/TransactionDetailView";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 import { getMasterSession } from "@/lib/auth/session";
+import { getOrCreateCashierActor } from "@/lib/master-actor";
 import { db } from "@/db";
 import { masterUsers } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -38,6 +39,13 @@ export default async function CashierTransactionDetailPage({
     }
   }
 
+  // Resolve shadow actor for master sessions (used as currentClerkDbId and for lock checks)
+  let shadowActorId: string | null = null;
+  if (isMasterActing) {
+    const shadowActor = await getOrCreateCashierActor(cashierId);
+    shadowActorId = shadowActor?.id ?? null;
+  }
+
   const [tx, currentClerk] = await Promise.all([
     getTransactionDetail(transactionId, cashierId),
     userId ? getClerkById(userId, cashierId) : Promise.resolve(null),
@@ -50,11 +58,14 @@ export default async function CashierTransactionDetailPage({
     | { acquired: false; lockedBy: { id: string; firstName: string | null; lastName: string | null; username: string | null; lockedAt: Date | null } };
 
   let lockResult: LockResult;
-  const initialMasterHasTakenOver = false;
+  let initialMasterHasTakenOver = false;
 
-  if (isMasterActing) {
-    if (tx.lockedByClerkId) {
-      // A real clerk holds the lock — master must Take Over
+  if (isMasterActing && isMasterAdmin) {
+    // master_admin: elevated access — no auto-lock, bypasses lock ownership in actions.
+    // Treat lock as "own" when the shadow actor holds it (re-opening a tx they already claimed).
+    const isOwnShadowLock = !!tx.lockedByClerkId && tx.lockedByClerkId === shadowActorId;
+    if (tx.lockedByClerkId && !isOwnShadowLock) {
+      // Another user holds the lock — show Take Over
       lockResult = {
         acquired: false,
         lockedBy: {
@@ -65,22 +76,24 @@ export default async function CashierTransactionDetailPage({
           lockedAt: tx.lockedAt,
         },
       };
-    } else if (tx.status === "unassigned") {
-      // Truly unassigned — show Take Over
-      lockResult = { acquired: false, lockedBy: { id: "", firstName: null, lastName: null, username: null, lockedAt: null } };
     } else {
-      // No clerk lock, status is active — master can view/act
+      // No lock held, or master's own shadow lock — act immediately
       lockResult = { acquired: true, lockedByClerkId: "" };
+      initialMasterHasTakenOver = true;
     }
   } else {
+    // Regular clerk OR master_clerk acting via shadow identity — auto-lock on open
     lockResult = await lockTransactionAction(transactionId);
+    if (isMasterActing && shadowActorId) {
+      initialMasterHasTakenOver = lockResult.acquired && lockResult.lockedByClerkId === shadowActorId;
+    }
   }
 
   return (
     <TransactionDetailView
       transaction={tx}
       lockResult={lockResult}
-      currentClerkDbId={isMasterActing ? "" : (currentClerk?.id ?? "")}
+      currentClerkDbId={isMasterActing ? (shadowActorId ?? "") : (currentClerk?.id ?? "")}
       queuePath={`/${slug}/${token}/clerk/queue`}
       isMasterActing={isMasterActing}
       isMasterAdmin={isMasterAdmin}

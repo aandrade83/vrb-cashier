@@ -45,6 +45,7 @@ export default async function CashierAdminLayout({
     { label: "Users", href: `${base}/users` },
     { label: "Deposits", href: `${base}/deposits` },
     { label: "Payouts", href: `${base}/payouts` },
+    { label: "Reports", href: `${base}/reports` },
   ];
 
   return (
