@@ -12,16 +12,8 @@ import {
 } from "@/components/ui/table";
 import { getPlayerById, getPlayerTransactions } from "@/data/transactions";
 import { STATUS_LABELS } from "@/data/admin-transactions";
+import { TX_STATUS_BADGE_VARIANT } from "@/lib/transaction-statuses";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  pending: "secondary",
-  in_progress: "outline",
-  approved: "default",
-  rejected: "destructive",
-  completed: "default",
-  cancelled: "destructive",
-};
 
 export default async function CashierTransactionsPage({
   params,
@@ -77,8 +69,8 @@ export default async function CashierTransactionsPage({
                       {tx.currency} {tx.amount}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANT[tx.status] ?? "secondary"} className="capitalize">
-                        {STATUS_LABELS[tx.status] ?? tx.status.replace("_", " ")}
+                      <Badge variant={TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary"} className="capitalize">
+                        {STATUS_LABELS[tx.status] ?? tx.status}
                       </Badge>
                     </TableCell>
                   </TableRow>

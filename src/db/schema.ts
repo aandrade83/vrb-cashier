@@ -51,12 +51,13 @@ export const fieldTypeEnum = pgEnum("field_type", [
 ]);
 
 export const transactionStatusEnum = pgEnum("transaction_status", [
-  "pending", // submitted by player, no clerk assigned (UI: pre_confirmed)
-  "in_progress", // clerk locked and is working on it
-  "approved", // clerk approved (UI: post_confirmed)
-  "rejected", // clerk rejected (UI: denied)
-  "completed", // fully processed and closed
-  "cancelled", // cancelled by player before processing
+  "unassigned",   // Player submitted, no clerk assigned
+  "pending",      // Clerk assigned and working on it
+  "preconfirmed", // Clerk pre-confirmed — awaiting post-confirmation
+  "postconfirmed",// Post-confirmed — awaiting master_admin completion
+  "denied",       // Denied by clerk or admin
+  "completed",    // Fully processed — terminal
+  "cancelled",    // Cancelled by player — terminal
 ]);
 
 // =============================================================================
@@ -286,13 +287,14 @@ export const methodFields = pgTable(
 // TRANSACTIONS
 // One row per deposit or payout request submitted by a Player.
 //
-// STATUS SEMANTIC MAPPING (UI labels):
-//   pending      → "Pre-confirmed"  (player submitted)
-//   in_progress  → "In progress"    (clerk locked)
-//   approved     → "Post-confirmed" (clerk approved)
-//   rejected     → "Denied"         (clerk/admin rejected)
-//   completed    → "Completed"      (admin closed)
-//   cancelled    → "Cancelled"      (player cancelled)
+// STATUS FLOW:
+//   unassigned   → Player submitted, no clerk assigned (default)
+//   pending      → Clerk assigned, actively working
+//   preconfirmed → Clerk pre-confirmed
+//   postconfirmed→ Post-confirmed; only master_admin can complete
+//   completed    → Fully processed (terminal)
+//   denied       → Denied by clerk/admin (terminal)
+//   cancelled    → Cancelled by player (terminal)
 // =============================================================================
 
 export const transactions = pgTable(
@@ -310,7 +312,7 @@ export const transactions = pgTable(
 
     type: methodTypeEnum("type").notNull(), // "deposit" | "payout"
 
-    status: transactionStatusEnum("status").notNull().default("pending"),
+    status: transactionStatusEnum("status").notNull().default("unassigned"),
 
     // Player who submitted the transaction
     playerId: uuid("player_id")
@@ -354,6 +356,18 @@ export const transactions = pgTable(
     // of the most recent update note for quick display in the queue.
     // -------------------------------------------------------------------------
     internalNote: text("internal_note"),
+
+    // -------------------------------------------------------------------------
+    // WORKFLOW TIMESTAMPS — set when entering each status
+    // -------------------------------------------------------------------------
+    assignedAt:    timestamp("assigned_at",     { withTimezone: true }), // first clerk lock
+    preconfirmedAt:timestamp("preconfirmed_at", { withTimezone: true }), // → preconfirmed
+    postconfirmedAt:timestamp("postconfirmed_at",{ withTimezone: true }), // → postconfirmed
+    completedAt:   timestamp("completed_at",    { withTimezone: true }), // → completed
+    deniedAt:      timestamp("denied_at",       { withTimezone: true }), // → denied
+
+    // Mandatory when status is denied
+    deniedReason: text("denied_reason"),
 
     // Idempotency key to prevent duplicate submissions from the player
     idempotencyKey: text("idempotency_key").unique(),
@@ -446,9 +460,8 @@ export const transactionUpdates = pgTable(
       .notNull()
       .references(() => transactions.id, { onDelete: "cascade" }),
 
-    // Who made the change (clerk or admin)
+    // Who made the change (clerk, admin, or null for master acting)
     updatedByUserId: uuid("updated_by_user_id")
-      .notNull()
       .references(() => cashierUsers.id),
 
     previousStatus: transactionStatusEnum("previous_status").notNull(),

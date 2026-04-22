@@ -81,7 +81,7 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
     .values({
       cashierId,
       type: "payout",
-      status: "pending",
+      status: "unassigned",
       playerId: player.id,
       methodId,
       amount,

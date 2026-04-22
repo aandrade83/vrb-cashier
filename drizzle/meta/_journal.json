@@ -85,6 +85,13 @@
       "when": 1745712000000,
       "tag": "0011_user_cashier_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1745798400000,
+      "tag": "0012_nullable_updated_by_user_id",
+      "breakpoints": true
     }
   ]
 }

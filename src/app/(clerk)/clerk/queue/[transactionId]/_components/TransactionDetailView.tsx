@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { buttonVariants } from "@/lib/button-variants";
 import { cn } from "@/lib/utils";
+import { TX_STATUS_LABEL, TX_STATUS_BADGE_VARIANT } from "@/lib/transaction-statuses";
 import type { TransactionDetail } from "@/data/queue";
 import { LockBanner } from "./LockBanner";
 import { UpdateForm } from "./UpdateForm";
@@ -19,6 +21,7 @@ type LockResult =
         id: string;
         firstName: string | null;
         lastName: string | null;
+        username: string | null;
         lockedAt: Date | null;
       };
     };
@@ -28,58 +31,48 @@ interface Props {
   lockResult: LockResult;
   currentClerkDbId: string;
   queuePath?: string;
+  isMasterActing?: boolean;
+  isMasterAdmin?: boolean;
+  initialMasterHasTakenOver?: boolean;
 }
-
-const STATUS_VARIANT: Record<
-  string,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  pending: "secondary",
-  in_progress: "outline",
-  approved: "default",
-  rejected: "destructive",
-  completed: "default",
-  cancelled: "destructive",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Preconfirmed",
-  in_progress: "In Progress",
-  approved: "Approved",
-  rejected: "Rejected",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
 
 export function TransactionDetailView({
   transaction: tx,
   lockResult,
   currentClerkDbId,
   queuePath = "/clerk/queue",
+  isMasterActing = false,
+  isMasterAdmin = false,
+  initialMasterHasTakenOver = false,
 }: Props) {
-  const ownsLock =
-    lockResult.acquired && lockResult.lockedByClerkId === currentClerkDbId;
+  const [masterHasTakenOver, setMasterHasTakenOver] = useState(initialMasterHasTakenOver);
+  const [effectiveStatus, setEffectiveStatus] = useState(tx.status);
+
+  function handleMasterTakeOver() {
+    setMasterHasTakenOver(true);
+    if (effectiveStatus === "unassigned") setEffectiveStatus("pending");
+  }
+
+  const ownsLock = isMasterActing
+    ? masterHasTakenOver
+    : lockResult.acquired && lockResult.lockedByClerkId === currentClerkDbId;
+
+  const statusLabel = TX_STATUS_LABEL[tx.status as keyof typeof TX_STATUS_LABEL] ?? tx.status;
+  const statusVariant = TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary";
 
   return (
     <div className="space-y-4">
-      {/* Back link */}
-      <Link
-        href={queuePath}
-        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-      >
+      <Link href={queuePath} className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
         ← Back to Queue
       </Link>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* ── Left column: transaction info ── */}
         <div className="space-y-4 lg:col-span-2">
-          {/* Header */}
           <Card>
             <CardHeader className="pb-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-lg font-semibold">
-                  {tx.referenceCode}
-                </span>
+                <span className="font-mono text-lg font-semibold">{tx.referenceCode}</span>
                 <Badge
                   variant="outline"
                   className={
@@ -90,50 +83,60 @@ export function TransactionDetailView({
                 >
                   {tx.type === "deposit" ? "Deposit" : "Payout"}
                 </Badge>
-                <Badge
-                  variant={STATUS_VARIANT[tx.status] ?? "secondary"}
-                  className="capitalize"
-                >
-                  {STATUS_LABEL[tx.status] ?? tx.status.replace("_", " ")}
+                <Badge variant={statusVariant} className="capitalize">
+                  {statusLabel}
                 </Badge>
               </div>
+              {tx.status === "denied" && tx.deniedReason && (
+                <p className="text-sm text-destructive mt-1">
+                  <span className="font-medium">Denial reason:</span> {tx.deniedReason}
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
-                    Player
-                  </p>
-                  <p>
-                    {[tx.playerFirstName, tx.playerLastName]
-                      .filter(Boolean)
-                      .join(" ") || "—"}
-                  </p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Player</p>
+                  <p>{[tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || "—"}</p>
                   <p className="text-muted-foreground">{tx.playerEmail}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
-                    Method
-                  </p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Method</p>
                   <p>{tx.methodName}</p>
-                  <p className="text-muted-foreground capitalize">
-                    {tx.methodType}
-                  </p>
+                  <p className="text-muted-foreground capitalize">{tx.methodType}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
-                    Amount
-                  </p>
-                  <p className="font-medium">
-                    {tx.currency} {tx.amount}
-                  </p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Amount</p>
+                  <p className="font-medium">{tx.currency} {tx.amount}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
-                    Submitted
-                  </p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Submitted</p>
                   <p>{format(tx.createdAt, "do MMM yyyy, HH:mm")}</p>
                 </div>
+                {tx.assignedAt && (
+                  <div>
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Assigned</p>
+                    <p>{format(tx.assignedAt, "do MMM yyyy, HH:mm")}</p>
+                  </div>
+                )}
+                {tx.preconfirmedAt && (
+                  <div>
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Pre-Confirmed</p>
+                    <p>{format(tx.preconfirmedAt, "do MMM yyyy, HH:mm")}</p>
+                  </div>
+                )}
+                {tx.postconfirmedAt && (
+                  <div>
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Post-Confirmed</p>
+                    <p>{format(tx.postconfirmedAt, "do MMM yyyy, HH:mm")}</p>
+                  </div>
+                )}
+                {tx.completedAt && (
+                  <div>
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Completed</p>
+                    <p>{format(tx.completedAt, "do MMM yyyy, HH:mm")}</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -150,8 +153,7 @@ export function TransactionDetailView({
                     <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
                       {fv.fieldLabelSnapshot}
                     </p>
-                    {fv.fieldTypeSnapshot === "image" ||
-                    fv.fieldTypeSnapshot === "file" ? (
+                    {fv.fieldTypeSnapshot === "image" || fv.fieldTypeSnapshot === "file" ? (
                       fv.value ? (
                         <a
                           href={fv.value}
@@ -190,9 +192,7 @@ export function TransactionDetailView({
                     >
                       {att.fileName}
                     </a>
-                    <span className="text-muted-foreground ml-2 text-xs">
-                      {att.fileType}
-                    </span>
+                    <span className="text-muted-foreground ml-2 text-xs">{att.fileType}</span>
                   </div>
                 ))}
               </CardContent>
@@ -213,21 +213,19 @@ export function TransactionDetailView({
                       <div className="space-y-1">
                         <p className="text-muted-foreground text-xs">
                           {format(upd.createdAt, "do MMM yyyy, HH:mm")} ·{" "}
-                          {[upd.clerkFirstName, upd.clerkLastName]
-                            .filter(Boolean)
-                            .join(" ") || "Unknown clerk"}
+                          {[upd.clerkFirstName, upd.clerkLastName].filter(Boolean).join(" ") || "Master Admin"}
                         </p>
                         <p className="capitalize">
                           <span className="text-muted-foreground">
-                            {upd.previousStatus.replace("_", " ")}
+                            {TX_STATUS_LABEL[upd.previousStatus as keyof typeof TX_STATUS_LABEL] ?? upd.previousStatus}
                           </span>
                           {" → "}
-                          <strong>{upd.newStatus.replace("_", " ")}</strong>
+                          <strong>
+                            {TX_STATUS_LABEL[upd.newStatus as keyof typeof TX_STATUS_LABEL] ?? upd.newStatus}
+                          </strong>
                         </p>
                         {upd.noteToPlayer && (
-                          <p className="text-muted-foreground">
-                            {upd.noteToPlayer}
-                          </p>
+                          <p className="text-muted-foreground">{upd.noteToPlayer}</p>
                         )}
                       </div>
                     </div>
@@ -250,6 +248,9 @@ export function TransactionDetailView({
                 transactionId={tx.id}
                 currentClerkDbId={currentClerkDbId}
                 queuePath={queuePath}
+                isMasterActing={isMasterActing}
+                masterHasTakenOver={masterHasTakenOver}
+                onMasterTakeOver={handleMasterTakeOver}
               />
             </CardContent>
           </Card>
@@ -259,7 +260,13 @@ export function TransactionDetailView({
               <CardTitle className="text-base">Update Transaction</CardTitle>
             </CardHeader>
             <CardContent>
-              <UpdateForm transactionId={tx.id} ownsLock={ownsLock} queuePath={queuePath} />
+              <UpdateForm
+                transactionId={tx.id}
+                currentStatus={effectiveStatus}
+                ownsLock={ownsLock}
+                isMasterAdmin={isMasterAdmin}
+                queuePath={queuePath}
+              />
             </CardContent>
           </Card>
         </div>

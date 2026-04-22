@@ -123,7 +123,7 @@ export async function deleteMethodAction(data: { id: string }): Promise<DeleteRe
       and(
         eq(transactions.methodId, data.id),
         eq(transactions.cashierId, cashierId),
-        inArray(transactions.status, ["approved", "rejected", "completed"])
+        inArray(transactions.status, ["preconfirmed", "postconfirmed", "denied", "completed"])
       )
     );
 

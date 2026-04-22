@@ -7,11 +7,11 @@ import { format } from "date-fns";
 import Link from "next/link";
 
 const PAYOUT_TABS = [
-  { label: "Search", statuses: ["pending", "in_progress", "approved", "rejected", "completed", "cancelled"] as const },
-  { label: "Pre-confirmed", statuses: ["pending"] as const },
-  { label: "Post-confirmed", statuses: ["approved"] as const },
-  { label: "Denied", statuses: ["rejected"] as const },
-  { label: "Completed", statuses: ["completed"] as const },
+  { label: "Search",         statuses: ["unassigned", "pending", "preconfirmed", "postconfirmed", "denied", "completed", "cancelled"] as const },
+  { label: "Pre-confirmed",  statuses: ["preconfirmed"]  as const },
+  { label: "Post-confirmed", statuses: ["postconfirmed"] as const },
+  { label: "Denied",         statuses: ["denied"]        as const },
+  { label: "Completed",      statuses: ["completed"]     as const },
 ] as const;
 
 export default async function AdminPayoutsPage({

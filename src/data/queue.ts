@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { eq, inArray, desc, asc, and } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { ACTIVE_STATUSES } from "@/lib/transaction-statuses";
 
 // ─── Queue list row ────────────────────────────────────────────────────────────
 
@@ -28,93 +29,65 @@ export type QueueTransaction = {
   lockedByClerkId: string | null;
   lockedByClerkFirstName: string | null;
   lockedByClerkLastName: string | null;
+  lockedByClerkUsername: string | null;
   lockedAt: Date | null;
-  lockExpiresAt: Date | null;
   createdAt: Date;
 };
 
-export async function getPendingTransactions(cashierId: string): Promise<QueueTransaction[]> {
-  const clerkUser = alias(cashierUsers, "clerk_user");
-
-  const rows = await db
-    .select({
-      id: transactions.id,
-      referenceCode: transactions.referenceCode,
-      type: transactions.type,
-      status: transactions.status,
-      amount: transactions.amount,
-      currency: transactions.currency,
-      methodName: paymentMethods.name,
-      playerFirstName: cashierUsers.firstName,
-      playerLastName: cashierUsers.lastName,
-      playerEmail: cashierUsers.email,
-      playerUsername: cashierUsers.username,
-      lockedByClerkId: transactions.lockedByClerkId,
-      lockedByClerkFirstName: clerkUser.firstName,
-      lockedByClerkLastName: clerkUser.lastName,
-      lockedAt: transactions.lockedAt,
-      lockExpiresAt: transactions.lockExpiresAt,
-      createdAt: transactions.createdAt,
-    })
-    .from(transactions)
-    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
-    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
-    .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
-    .where(
-      and(
-        eq(transactions.cashierId, cashierId),
-        inArray(transactions.status, ["pending", "in_progress"])
-      )
-    )
-    .orderBy(asc(transactions.createdAt));
-
-  return rows;
+function queueSelect(clerkUser: ReturnType<typeof alias>) {
+  return {
+    id: transactions.id,
+    referenceCode: transactions.referenceCode,
+    type: transactions.type,
+    status: transactions.status,
+    amount: transactions.amount,
+    currency: transactions.currency,
+    methodName: paymentMethods.name,
+    playerFirstName: cashierUsers.firstName,
+    playerLastName: cashierUsers.lastName,
+    playerEmail: cashierUsers.email,
+    playerUsername: cashierUsers.username,
+    lockedByClerkId: transactions.lockedByClerkId,
+    lockedByClerkFirstName: clerkUser.firstName,
+    lockedByClerkLastName: clerkUser.lastName,
+    lockedByClerkUsername: clerkUser.username,
+    lockedAt: transactions.lockedAt,
+    createdAt: transactions.createdAt,
+  };
 }
 
-// ─── Completed transactions ────────────────────────────────────────────────────
-
-export async function getCompletedTransactions(
-  cashierId: string,
-  type: "deposit" | "payout",
-  limit = 10
-): Promise<QueueTransaction[]> {
+export async function getPendingTransactions(cashierId: string): Promise<QueueTransaction[]> {
   const clerkUser = alias(cashierUsers, "clerk_user");
-
-  const rows = await db
-    .select({
-      id: transactions.id,
-      referenceCode: transactions.referenceCode,
-      type: transactions.type,
-      status: transactions.status,
-      amount: transactions.amount,
-      currency: transactions.currency,
-      methodName: paymentMethods.name,
-      playerFirstName: cashierUsers.firstName,
-      playerLastName: cashierUsers.lastName,
-      playerEmail: cashierUsers.email,
-      playerUsername: cashierUsers.username,
-      lockedByClerkId: transactions.lockedByClerkId,
-      lockedByClerkFirstName: clerkUser.firstName,
-      lockedByClerkLastName: clerkUser.lastName,
-      lockedAt: transactions.lockedAt,
-      lockExpiresAt: transactions.lockExpiresAt,
-      createdAt: transactions.createdAt,
-    })
+  return db
+    .select(queueSelect(clerkUser))
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
-    .where(
-      and(
-        eq(transactions.cashierId, cashierId),
-        inArray(transactions.status, ["approved", "rejected", "completed"]),
-        eq(transactions.type, type)
-      )
-    )
+    .where(and(eq(transactions.cashierId, cashierId), inArray(transactions.status, ACTIVE_STATUSES)))
+    .orderBy(asc(transactions.createdAt));
+}
+
+export async function getRecentTransactions(
+  cashierId: string,
+  statuses: string[],
+  type: "deposit" | "payout",
+  limit = 10,
+): Promise<QueueTransaction[]> {
+  const clerkUser = alias(cashierUsers, "clerk_user");
+  return db
+    .select(queueSelect(clerkUser))
+    .from(transactions)
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
+    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
+    .where(and(
+      eq(transactions.cashierId, cashierId),
+      inArray(transactions.status, statuses as ["completed" | "denied"]),
+      eq(transactions.type, type),
+    ))
     .orderBy(desc(transactions.createdAt))
     .limit(limit);
-
-  return rows;
 }
 
 // ─── Transaction detail ────────────────────────────────────────────────────────
@@ -127,6 +100,7 @@ export type TransactionDetail = {
   amount: string;
   currency: string;
   internalNote: string | null;
+  deniedReason: string | null;
   methodName: string;
   methodType: string;
   playerFirstName: string | null;
@@ -135,8 +109,13 @@ export type TransactionDetail = {
   lockedByClerkId: string | null;
   lockedByClerkFirstName: string | null;
   lockedByClerkLastName: string | null;
+  lockedByClerkUsername: string | null;
   lockedAt: Date | null;
-  lockExpiresAt: Date | null;
+  assignedAt: Date | null;
+  preconfirmedAt: Date | null;
+  postconfirmedAt: Date | null;
+  completedAt: Date | null;
+  deniedAt: Date | null;
   createdAt: Date;
   fieldValues: {
     id: string;
@@ -164,7 +143,7 @@ export type TransactionDetail = {
 
 export async function getTransactionDetail(
   transactionId: string,
-  cashierId: string
+  cashierId: string,
 ): Promise<TransactionDetail | null> {
   const clerkUser = alias(cashierUsers, "clerk_user");
   const updateClerk = alias(cashierUsers, "update_clerk");
@@ -178,17 +157,22 @@ export async function getTransactionDetail(
       amount: transactions.amount,
       currency: transactions.currency,
       internalNote: transactions.internalNote,
+      deniedReason: transactions.deniedReason,
       methodName: paymentMethods.name,
       methodType: paymentMethods.type,
       playerFirstName: cashierUsers.firstName,
       playerLastName: cashierUsers.lastName,
       playerEmail: cashierUsers.email,
-      playerUsername: cashierUsers.username,
       lockedByClerkId: transactions.lockedByClerkId,
       lockedByClerkFirstName: clerkUser.firstName,
       lockedByClerkLastName: clerkUser.lastName,
+      lockedByClerkUsername: clerkUser.username,
       lockedAt: transactions.lockedAt,
-      lockExpiresAt: transactions.lockExpiresAt,
+      assignedAt: transactions.assignedAt,
+      preconfirmedAt: transactions.preconfirmedAt,
+      postconfirmedAt: transactions.postconfirmedAt,
+      completedAt: transactions.completedAt,
+      deniedAt: transactions.deniedAt,
       createdAt: transactions.createdAt,
     })
     .from(transactions)
@@ -200,41 +184,43 @@ export async function getTransactionDetail(
 
   if (!row) return null;
 
-  const fieldValues = await db
-    .select({
-      id: transactionFieldValues.id,
-      fieldLabelSnapshot: transactionFieldValues.fieldLabelSnapshot,
-      fieldTypeSnapshot: transactionFieldValues.fieldTypeSnapshot,
-      value: transactionFieldValues.value,
-    })
-    .from(transactionFieldValues)
-    .where(eq(transactionFieldValues.transactionId, transactionId));
+  const [fieldValues, attachments, updatesRaw] = await Promise.all([
+    db
+      .select({
+        id: transactionFieldValues.id,
+        fieldLabelSnapshot: transactionFieldValues.fieldLabelSnapshot,
+        fieldTypeSnapshot: transactionFieldValues.fieldTypeSnapshot,
+        value: transactionFieldValues.value,
+      })
+      .from(transactionFieldValues)
+      .where(eq(transactionFieldValues.transactionId, transactionId)),
 
-  const attachments = await db
-    .select({
-      id: transactionAttachments.id,
-      fileName: transactionAttachments.fileName,
-      fileType: transactionAttachments.fileType,
-      fileUrl: transactionAttachments.fileUrl,
-    })
-    .from(transactionAttachments)
-    .where(eq(transactionAttachments.transactionId, transactionId));
+    db
+      .select({
+        id: transactionAttachments.id,
+        fileName: transactionAttachments.fileName,
+        fileType: transactionAttachments.fileType,
+        fileUrl: transactionAttachments.fileUrl,
+      })
+      .from(transactionAttachments)
+      .where(eq(transactionAttachments.transactionId, transactionId)),
 
-  const updatesRaw = await db
-    .select({
-      id: transactionUpdates.id,
-      clerkFirstName: updateClerk.firstName,
-      clerkLastName: updateClerk.lastName,
-      previousStatus: transactionUpdates.previousStatus,
-      newStatus: transactionUpdates.newStatus,
-      noteToPlayer: transactionUpdates.noteToPlayer,
-      internalNote: transactionUpdates.internalNote,
-      createdAt: transactionUpdates.createdAt,
-    })
-    .from(transactionUpdates)
-    .leftJoin(updateClerk, eq(transactionUpdates.updatedByUserId, updateClerk.id))
-    .where(eq(transactionUpdates.transactionId, transactionId))
-    .orderBy(desc(transactionUpdates.createdAt));
+    db
+      .select({
+        id: transactionUpdates.id,
+        clerkFirstName: updateClerk.firstName,
+        clerkLastName: updateClerk.lastName,
+        previousStatus: transactionUpdates.previousStatus,
+        newStatus: transactionUpdates.newStatus,
+        noteToPlayer: transactionUpdates.noteToPlayer,
+        internalNote: transactionUpdates.internalNote,
+        createdAt: transactionUpdates.createdAt,
+      })
+      .from(transactionUpdates)
+      .leftJoin(updateClerk, eq(transactionUpdates.updatedByUserId, updateClerk.id))
+      .where(eq(transactionUpdates.transactionId, transactionId))
+      .orderBy(desc(transactionUpdates.createdAt)),
+  ]);
 
   return { ...row, fieldValues, attachments, updates: updatesRaw };
 }
@@ -248,108 +234,70 @@ export type MultiQueueTransaction = QueueTransaction & {
   cashierToken: string;
 };
 
+function multiQueueSelect(clerkUser: ReturnType<typeof alias>) {
+  return {
+    ...queueSelect(clerkUser),
+    cashierId: transactions.cashierId,
+    cashierName: cashiers.name,
+    cashierSlug: cashiers.slug,
+    cashierToken: cashiers.token,
+  };
+}
+
 export async function getPendingTransactionsMulti(
   cashierIds: string[],
 ): Promise<MultiQueueTransaction[]> {
   if (cashierIds.length === 0) return [];
   const clerkUser = alias(cashierUsers, "clerk_user");
-
-  const rows = await db
-    .select({
-      id: transactions.id,
-      referenceCode: transactions.referenceCode,
-      type: transactions.type,
-      status: transactions.status,
-      amount: transactions.amount,
-      currency: transactions.currency,
-      methodName: paymentMethods.name,
-      playerFirstName: cashierUsers.firstName,
-      playerLastName: cashierUsers.lastName,
-      playerEmail: cashierUsers.email,
-      playerUsername: cashierUsers.username,
-      lockedByClerkId: transactions.lockedByClerkId,
-      lockedByClerkFirstName: clerkUser.firstName,
-      lockedByClerkLastName: clerkUser.lastName,
-      lockedAt: transactions.lockedAt,
-      lockExpiresAt: transactions.lockExpiresAt,
-      createdAt: transactions.createdAt,
-      cashierId: transactions.cashierId,
-      cashierName: cashiers.name,
-      cashierSlug: cashiers.slug,
-      cashierToken: cashiers.token,
-    })
+  return db
+    .select(multiQueueSelect(clerkUser))
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .innerJoin(cashiers, eq(transactions.cashierId, cashiers.id))
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
-    .where(
-      and(
-        inArray(transactions.cashierId, cashierIds),
-        inArray(transactions.status, ["pending", "in_progress"]),
-      ),
-    )
-    .orderBy(asc(transactions.createdAt));
-
-  return rows as MultiQueueTransaction[];
+    .where(and(
+      inArray(transactions.cashierId, cashierIds),
+      inArray(transactions.status, ACTIVE_STATUSES),
+    ))
+    .orderBy(asc(transactions.createdAt)) as Promise<MultiQueueTransaction[]>;
 }
 
-export async function getCompletedTransactionsMulti(
+export async function getRecentTransactionsMulti(
   cashierIds: string[],
   limit = 20,
 ): Promise<MultiQueueTransaction[]> {
   if (cashierIds.length === 0) return [];
   const clerkUser = alias(cashierUsers, "clerk_user");
-
-  const rows = await db
-    .select({
-      id: transactions.id,
-      referenceCode: transactions.referenceCode,
-      type: transactions.type,
-      status: transactions.status,
-      amount: transactions.amount,
-      currency: transactions.currency,
-      methodName: paymentMethods.name,
-      playerFirstName: cashierUsers.firstName,
-      playerLastName: cashierUsers.lastName,
-      playerEmail: cashierUsers.email,
-      playerUsername: cashierUsers.username,
-      lockedByClerkId: transactions.lockedByClerkId,
-      lockedByClerkFirstName: clerkUser.firstName,
-      lockedByClerkLastName: clerkUser.lastName,
-      lockedAt: transactions.lockedAt,
-      lockExpiresAt: transactions.lockExpiresAt,
-      createdAt: transactions.createdAt,
-      cashierId: transactions.cashierId,
-      cashierName: cashiers.name,
-      cashierSlug: cashiers.slug,
-      cashierToken: cashiers.token,
-    })
+  return db
+    .select(multiQueueSelect(clerkUser))
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
     .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
     .innerJoin(cashiers, eq(transactions.cashierId, cashiers.id))
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
-    .where(
-      and(
-        inArray(transactions.cashierId, cashierIds),
-        inArray(transactions.status, ["approved", "rejected", "completed"]),
-      ),
-    )
+    .where(and(
+      inArray(transactions.cashierId, cashierIds),
+      inArray(transactions.status, ["completed", "denied"]),
+    ))
     .orderBy(desc(transactions.createdAt))
-    .limit(limit);
-
-  return rows as MultiQueueTransaction[];
+    .limit(limit) as Promise<MultiQueueTransaction[]>;
 }
 
 // ─── Clerk lookup ──────────────────────────────────────────────────────────────
 
 export async function getClerkById(
   userId: string,
-  cashierId: string
-): Promise<{ id: string; firstName: string | null; lastName: string | null } | null> {
+  cashierId: string,
+): Promise<{ id: string; firstName: string | null; lastName: string | null; username: string; role: string } | null> {
   const [row] = await db
-    .select({ id: cashierUsers.id, firstName: cashierUsers.firstName, lastName: cashierUsers.lastName })
+    .select({
+      id: cashierUsers.id,
+      firstName: cashierUsers.firstName,
+      lastName: cashierUsers.lastName,
+      username: cashierUsers.username,
+      role: cashierUsers.role,
+    })
     .from(cashierUsers)
     .where(and(eq(cashierUsers.id, userId), eq(cashierUsers.cashierId, cashierId)))
     .limit(1);

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getMasterSessionFromCookies, getMasterSessionData } from "@/lib/master-auth";
 import { getUserCashierPermissions } from "@/data/master-users";
 import { getCashiersByIds } from "@/data/cashiers";
-import { getPendingTransactionsMulti, getCompletedTransactionsMulti } from "@/data/queue";
+import { getPendingTransactionsMulti, getRecentTransactionsMulti } from "@/data/queue";
 import { MasterClerkNav } from "@/components/master-clerk-nav";
 import { ClerkQueueView } from "./clerk-queue-view";
 
@@ -24,7 +24,7 @@ export default async function ClerkQueuePage() {
   const [cashiers, pending, completed] = await Promise.all([
     getCashiersByIds(cashierIds),
     getPendingTransactionsMulti(cashierIds),
-    getCompletedTransactionsMulti(cashierIds, 40),
+    getRecentTransactionsMulti(cashierIds, 40),
   ]);
 
   return (

@@ -6,10 +6,10 @@ import { format } from "date-fns";
 import Link from "next/link";
 
 const DEPOSIT_TABS = [
-  { label: "Pre-confirmed", statuses: ["pending"] as const },
-  { label: "Post-confirmed", statuses: ["approved"] as const },
-  { label: "Denied", statuses: ["rejected"] as const },
-  { label: "Completed", statuses: ["completed"] as const },
+  { label: "Pre-confirmed",  statuses: ["preconfirmed"]  as const },
+  { label: "Post-confirmed", statuses: ["postconfirmed"] as const },
+  { label: "Denied",         statuses: ["denied"]        as const },
+  { label: "Completed",      statuses: ["completed"]     as const },
 ] as const;
 
 type Tab = typeof DEPOSIT_TABS[number]["label"];
