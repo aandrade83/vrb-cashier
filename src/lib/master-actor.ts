@@ -97,3 +97,57 @@ export async function getOrCreateCashierActor(
 
   return { ...created, masterRole };
 }
+
+/**
+ * Resolves or auto-creates a shadow player cashierUsers row for the currently
+ * acting master user. Used when master visits as player and submits transactions.
+ * Shadow username: "__mp__<masterUsername>" (mp = master-player)
+ */
+export async function getOrCreateShadowPlayer(
+  cashierId: string,
+): Promise<{ id: string; username: string } | null> {
+  const masterSession = await getMasterSession();
+  if (!masterSession || masterSession.actingCashierId !== cashierId) return null;
+
+  let masterUsername: string;
+  let displayName: string;
+
+  if (!masterSession.masterUserId) {
+    masterUsername = "root";
+    displayName = "ENV Root";
+  } else {
+    const [mu] = await db
+      .select({ username: masterUsers.username })
+      .from(masterUsers)
+      .where(eq(masterUsers.id, masterSession.masterUserId))
+      .limit(1);
+    if (!mu) return null;
+    masterUsername = mu.username;
+    displayName = mu.username;
+  }
+
+  const shadowUsername = `__mp__${masterUsername}`;
+
+  const [existing] = await db
+    .select({ id: cashierUsers.id, username: cashierUsers.username })
+    .from(cashierUsers)
+    .where(and(eq(cashierUsers.cashierId, cashierId), eq(cashierUsers.username, shadowUsername)))
+    .limit(1);
+
+  if (existing) return existing;
+
+  const [created] = await db
+    .insert(cashierUsers)
+    .values({
+      cashierId,
+      username: shadowUsername,
+      passwordHash: "!disabled",
+      role: "player",
+      firstName: `Master (${displayName})`,
+      lastName: null,
+      isActive: true,
+    })
+    .returning({ id: cashierUsers.id, username: cashierUsers.username });
+
+  return created;
+}
