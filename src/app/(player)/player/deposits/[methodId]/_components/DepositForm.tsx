@@ -21,6 +21,7 @@ type Props = {
   method: PaymentMethod;
   fields: MethodField[];
   basePath?: string;
+  previewMode?: boolean;
 };
 
 type FileUploadState = {
@@ -68,7 +69,7 @@ function HiddenLabelField({ field }: { field: MethodField }) {
   );
 }
 
-export function DepositForm({ fields, basePath }: Props) {
+export function DepositForm({ fields, basePath, previewMode = false }: Props) {
   const router = useRouter();
   const idempotencyKey = useRef(crypto.randomUUID());
 
@@ -218,6 +219,19 @@ export function DepositForm({ fields, basePath }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {fields.map((field) => {
+        if (field.fieldType === "hidden_label") {
+          return <HiddenLabelField key={field.id} field={field} />;
+        }
+        if (field.fieldType === "label") {
+          return (
+            <div key={field.id}>
+              <p className="text-sm font-medium">{field.label}</p>
+              {field.placeholder && (
+                <p className="text-sm text-muted-foreground mt-0.5">{field.placeholder}</p>
+              )}
+            </div>
+          );
+        }
         if (isExcluded(field.fieldType)) return null;
 
         return (
@@ -380,7 +394,7 @@ export function DepositForm({ fields, basePath }: Props) {
         <p className="text-sm text-destructive">{serverError}</p>
       )}
 
-      <Button type="submit" disabled={submitting || anyUploading} className="w-full sm:w-auto">
+      <Button type="submit" disabled={submitting || anyUploading || previewMode} className="w-full sm:w-auto">
         {submitting ? "Submitting…" : "Submit Deposit Request"}
       </Button>
     </form>

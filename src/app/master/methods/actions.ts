@@ -10,6 +10,7 @@ import {
   getGlobalMethodById,
 } from "@/data/methods";
 import { isMasterAuthenticated } from "@/lib/master-auth";
+import type { MethodWithFields } from "@/data/methods";
 
 type ActionResult = { success: true; methodId?: string } | { success: false; error: string };
 
@@ -101,6 +102,18 @@ export async function toggleGlobalMethodActiveAction(id: string): Promise<Action
   await toggleGlobalMethodActive(id);
   revalidatePath("/master/methods");
   return { success: true };
+}
+
+export async function getMethodPreviewAction(
+  id: string,
+): Promise<{ success: true; method: MethodWithFields } | { success: false; error: string }> {
+  const auth = await requireMaster();
+  if (auth !== true) return { success: false, error: auth.error };
+
+  const method = await getGlobalMethodById(id);
+  if (!method) return { success: false, error: "Method not found." };
+
+  return { success: true, method };
 }
 
 type DeleteResult =

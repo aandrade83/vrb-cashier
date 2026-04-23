@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -22,9 +23,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Pencil, Trash2 } from "lucide-react";
-import { toggleGlobalMethodActiveAction, deleteGlobalMethodAction } from "./actions";
-import type { MethodWithFieldCount } from "@/data/methods";
+import { Eye, Pencil, Trash2 } from "lucide-react";
+import { toggleGlobalMethodActiveAction, deleteGlobalMethodAction, getMethodPreviewAction } from "./actions";
+import { DepositForm } from "@/app/(player)/player/deposits/[methodId]/_components/DepositForm";
+import type { MethodWithFieldCount, MethodWithFields } from "@/data/methods";
 
 type Filter = "all" | "deposit" | "payout";
 
@@ -36,6 +38,9 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [, startTransition] = useTransition();
 
+  const [previewMethod, setPreviewMethod] = useState<MethodWithFields | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   const filtered =
     filter === "all" ? methods : methods.filter((m) => m.type === filter);
   const deleting = deletingId ? methods.find((m) => m.id === deletingId) : null;
@@ -44,6 +49,13 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
     startTransition(async () => {
       await toggleGlobalMethodActiveAction(id);
     });
+  }
+
+  async function handlePreview(id: string) {
+    setPreviewLoading(true);
+    const result = await getMethodPreviewAction(id);
+    setPreviewLoading(false);
+    if (result.success) setPreviewMethod(result.method);
   }
 
   async function handleDelete(e: React.FormEvent) {
@@ -131,6 +143,14 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handlePreview(method.id)}
+                      disabled={previewLoading}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                     <Link
                       href={`/master/methods/${method.id}/edit`}
                       className={buttonVariants({ variant: "ghost", size: "icon" })}
@@ -156,6 +176,46 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
         </Table>
       )}
 
+      {/* Preview dialog */}
+      <Dialog open={!!previewMethod} onOpenChange={(open) => { if (!open) setPreviewMethod(null); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              {previewMethod?.logoUrl ? (
+                <Image
+                  src={previewMethod.logoUrl}
+                  alt={previewMethod?.name ?? ""}
+                  width={32}
+                  height={32}
+                  className="rounded object-contain shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded bg-muted shrink-0" />
+              )}
+              {previewMethod?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Player view — submit is disabled in preview.
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewMethod?.description && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-4 text-sm text-blue-900 dark:text-blue-100">
+              {previewMethod.description}
+            </div>
+          )}
+
+          {previewMethod && (
+            <DepositForm
+              method={previewMethod}
+              fields={previewMethod.fields}
+              previewMode
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete dialog */}
       <Dialog
         open={!!deletingId}
         onOpenChange={(open) => {
