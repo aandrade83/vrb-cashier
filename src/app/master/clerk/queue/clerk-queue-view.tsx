@@ -29,6 +29,7 @@ interface Props {
   pending: MultiQueueTransaction[];
   completed: MultiQueueTransaction[];
   cashiers: Pick<Cashier, "id" | "name">[];
+  transactionPath?: (tx: MultiQueueTransaction) => string;
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -46,7 +47,7 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-export function ClerkQueueView({ pending, completed, cashiers }: Props) {
+export function ClerkQueueView({ pending, completed, cashiers, transactionPath }: Props) {
   const router = useRouter();
   const [cashierFilter, setCashierFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -67,21 +68,10 @@ export function ClerkQueueView({ pending, completed, cashiers }: Props) {
   const postConfirmed = filtered.filter((tx) => tx.status === "postconfirmed");
   const filteredCompleted = applyFilters(completed);
 
-  async function handleOpen(tx: MultiQueueTransaction) {
+  function handleOpen(tx: MultiQueueTransaction) {
+    if (!transactionPath) return;
     setOpeningId(tx.id);
-    try {
-      const res = await fetch("/api/master/visit-cashier", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cashierId: tx.cashierId, role: "clerk" }),
-      });
-      const data = await res.json();
-      if (data.redirect || res.ok) {
-        router.push(`/${tx.cashierSlug}/${tx.cashierToken}/clerk/queue/${tx.id}`);
-      }
-    } finally {
-      setOpeningId(null);
-    }
+    router.push(transactionPath(tx));
   }
 
   function renderHandledBy(tx: MultiQueueTransaction) {
@@ -105,7 +95,7 @@ export function ClerkQueueView({ pending, completed, cashiers }: Props) {
             <TableHead>Amount</TableHead>
             <TableHead>Submitted</TableHead>
             {showHandledBy && <TableHead>Handled By</TableHead>}
-            <TableHead></TableHead>
+            {transactionPath && <TableHead></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -129,11 +119,13 @@ export function ClerkQueueView({ pending, completed, cashiers }: Props) {
                   {renderHandledBy(tx)}
                 </TableCell>
               )}
-              <TableCell>
-                <Button size="sm" onClick={() => handleOpen(tx)} disabled={openingId !== null}>
-                  {openingId === tx.id ? "Opening…" : "Open"}
-                </Button>
-              </TableCell>
+              {transactionPath && (
+                <TableCell>
+                  <Button size="sm" onClick={() => handleOpen(tx)} disabled={openingId !== null}>
+                    {openingId === tx.id ? "Opening…" : "Open"}
+                  </Button>
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

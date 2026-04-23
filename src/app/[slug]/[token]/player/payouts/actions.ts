@@ -9,7 +9,7 @@ import {
   getPlayerById,
 } from "@/data/transactions";
 import { getMethodWithFields } from "@/data/methods";
-import { getUserSession } from "@/lib/auth/session";
+import { getUserSession, getMasterSession } from "@/lib/auth/session";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 import { getOrCreateShadowPlayer } from "@/lib/master-actor";
 import { assignName, assignAddress } from "@/data/names-pool";
@@ -41,12 +41,15 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
   let userId: string;
   let cashierId: string;
 
-  const userSession = await getUserSession();
-  if (userSession && userSession.role === "player") {
-    userId = userSession.userId;
-    cashierId = userSession.cashierId;
-  } else {
-    // Support master acting as player (e.g. testing from master dashboard)
+  const [userSession, masterSession] = await Promise.all([
+    getUserSession(),
+    getMasterSession(),
+  ]);
+
+  // Master session takes priority — prevents stale player cookie from interfering
+  const isMasterActing = !!(masterSession?.actingCashierId);
+
+  if (isMasterActing) {
     const access = await getCashierPageAccess("player");
     if (!access) return { success: false, error: "Unauthorized" };
     cashierId = access.cashierId;
@@ -57,10 +60,15 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
       if (!shadow) return { success: false, error: "Unauthorized" };
       userId = shadow.id;
     }
+  } else if (userSession && userSession.role === "player") {
+    userId = userSession.userId;
+    cashierId = userSession.cashierId;
+  } else {
+    return { success: false, error: "Unauthorized" };
   }
 
-  // Block unverified players — must verify email before transacting
-  if (userSession && userSession.role === "player") {
+  // Block unverified real players — master sessions bypass this check
+  if (!isMasterActing && userSession?.role === "player") {
     const playerRecord = await getUserById(userId, cashierId);
     if (!playerRecord?.emailVerified) {
       return { success: false, error: "Email verification required." };
@@ -101,21 +109,29 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
   const year = new Date().getFullYear();
   const referenceCode = `PAY-${year}-${seq.toString().padStart(6, "0")}`;
 
-  const [transaction] = await db
-    .insert(transactions)
-    .values({
-      cashierId,
-      type: "payout",
-      status: "unassigned",
-      playerId: player.id,
-      methodId,
-      amount,
-      expectedAmount: expectedAmount ?? null,
-      currency,
-      referenceCode,
-      idempotencyKey,
-    })
-    .returning({ id: transactions.id });
+  let transaction: { id: string };
+  try {
+    const [row] = await db
+      .insert(transactions)
+      .values({
+        cashierId,
+        type: "payout",
+        status: "unassigned",
+        playerId: player.id,
+        methodId,
+        amount,
+        expectedAmount: expectedAmount ?? null,
+        currency,
+        referenceCode,
+        idempotencyKey,
+      })
+      .returning({ id: transactions.id });
+    transaction = row;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[payout] insert failed — cashierId=%s playerId=%s methodId=%s amount=%s error=%s", cashierId, player.id, methodId, amount, msg);
+    return { success: false, error: "Failed to create transaction. Please try again." };
+  }
 
   if (fieldValues.length > 0) {
     await db.insert(transactionFieldValues).values(

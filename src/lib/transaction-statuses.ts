@@ -54,5 +54,6 @@ export const NEXT_STATUSES_CLERK: Record<string, { value: TxStatus; label: strin
 // Transitions available to master_admin (superset of clerk transitions)
 export const NEXT_STATUSES_ADMIN: Record<string, { value: TxStatus; label: string }[]> = {
   ...NEXT_STATUSES_CLERK,
+  unassigned:    [{ value: "preconfirmed", label: "Pre-Confirm" }, { value: "denied", label: "Deny" }],
   postconfirmed: [{ value: "completed", label: "Complete" }],
 };
