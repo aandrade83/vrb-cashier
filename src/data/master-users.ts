@@ -70,6 +70,13 @@ export async function updateMasterUserPassword(id: string, passwordHash: string)
     .where(eq(masterUsers.id, id));
 }
 
+export async function setMasterUserMustResetPassword(id: string): Promise<void> {
+  await db
+    .update(masterUsers)
+    .set({ mustResetPassword: true, updatedAt: new Date() })
+    .where(eq(masterUsers.id, id));
+}
+
 export async function deleteMasterUser(id: string): Promise<void> {
   await db.delete(masterUsers).where(eq(masterUsers.id, id));
 }
