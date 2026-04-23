@@ -25,13 +25,14 @@ import {
   TERMINAL_STATUSES,
 } from "@/lib/transaction-statuses";
 import type { MasterTransactionDetail } from "@/data/queue";
-import { masterClerkUpdateTransactionStatusAction } from "@/app/master/clerk/queue/actions";
+import { masterClerkUpdateTransactionStatusAction, masterClerkTakeTransactionAction } from "@/app/master/clerk/queue/actions";
 
 interface Props {
   transaction: MasterTransactionDetail;
+  myClerkId: string | null;
 }
 
-export function ClerkTransactionView({ transaction: tx }: Props) {
+export function ClerkTransactionView({ transaction: tx, myClerkId }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [newStatus, setNewStatus] = useState("");
@@ -40,14 +41,31 @@ export function ClerkTransactionView({ transaction: tx }: Props) {
   const [deniedReason, setDeniedReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const [takePending, setTakePending] = useState(false);
+  const [takeError, setTakeError] = useState<string | null>(null);
+  const [showTakeoverConfirm, setShowTakeoverConfirm] = useState(false);
+
   const statusLabel = TX_STATUS_LABEL[tx.status as keyof typeof TX_STATUS_LABEL] ?? tx.status;
   const statusVariant =
     TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary";
 
   const allowedStatuses = NEXT_STATUSES_CLERK[tx.status] ?? [];
   const isFinalized = TERMINAL_STATUSES.includes(tx.status as never);
+  const isAssigned = !!tx.lockedByClerkId;
   const isDenying = newStatus === "denied";
-  const isValid = newStatus !== "" && (!isDenying || deniedReason.trim().length >= 3);
+  const isValid = (!isDenying || deniedReason.trim().length >= 3);
+
+  async function handleTake() {
+    setTakeError(null);
+    setTakePending(true);
+    const result = await masterClerkTakeTransactionAction({ transactionId: tx.id });
+    setTakePending(false);
+    if (result.success) {
+      router.refresh();
+    } else {
+      setTakeError(result.error);
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -247,7 +265,7 @@ export function ClerkTransactionView({ transaction: tx }: Props) {
             <CardHeader>
               <CardTitle className="text-base">Assignment</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm">
+            <CardContent className="space-y-3 text-sm">
               {lockedClerkName ? (
                 <p className="text-muted-foreground">
                   Assigned to{" "}
@@ -255,7 +273,51 @@ export function ClerkTransactionView({ transaction: tx }: Props) {
                   {tx.lockedAt ? ` since ${format(tx.lockedAt, "HH:mm")}` : ""}
                 </p>
               ) : (
-                <p className="text-muted-foreground">Not assigned to any clerk.</p>
+                <p className="text-muted-foreground">Not assigned.</p>
+              )}
+              {!isFinalized && !lockedClerkName && (
+                <>
+                  {takeError && <p className="text-xs text-destructive">{takeError}</p>}
+                  <Button size="sm" className="w-full" onClick={handleTake} disabled={takePending}>
+                    {takePending ? "Taking…" : "Take Transaction"}
+                  </Button>
+                </>
+              )}
+              {!isFinalized && lockedClerkName && tx.lockedByClerkId !== myClerkId && !showTakeoverConfirm && (
+                <>
+                  {takeError && <p className="text-xs text-destructive">{takeError}</p>}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => { setTakeError(null); setShowTakeoverConfirm(true); }}
+                    disabled={takePending}
+                  >
+                    Take Over
+                  </Button>
+                </>
+              )}
+              {!isFinalized && lockedClerkName && tx.lockedByClerkId !== myClerkId && showTakeoverConfirm && (
+                <div className="space-y-2">
+                  <p className="text-xs text-amber-600">
+                    This will reassign the transaction to you.
+                  </p>
+                  {takeError && <p className="text-xs text-destructive">{takeError}</p>}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setShowTakeoverConfirm(false)}
+                      disabled={takePending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button size="sm" className="flex-1" onClick={handleTake} disabled={takePending}>
+                      {takePending ? "Taking…" : "Confirm"}
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -269,81 +331,85 @@ export function ClerkTransactionView({ transaction: tx }: Props) {
                 <p className="text-sm text-muted-foreground">
                   This transaction is finalized and cannot be updated.
                 </p>
-              ) : allowedStatuses.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No transitions available from the current status. An admin can assign or advance
-                  this transaction.
-                </p>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="newStatus">New Status</Label>
-                    <Select
-                      value={newStatus}
-                      onValueChange={(v) => {
-                        if (v) {
-                          setNewStatus(v);
-                          if (v !== "denied") setDeniedReason("");
-                        }
-                      }}
-                      disabled={isPending}
-                    >
-                      <SelectTrigger id="newStatus">
-                        <SelectValue placeholder="Select a status…">
-                          {newStatus
-                            ? (allowedStatuses.find((s) => s.value === newStatus)?.label ??
-                              newStatus)
-                            : "Select a status…"}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allowedStatuses.map((s) => (
-                          <SelectItem key={s.value} value={s.value}>
-                            {s.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {allowedStatuses.length > 0 ? (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="newStatus">
+                          New Status <span className="text-muted-foreground text-xs">(optional)</span>
+                        </Label>
+                        <Select
+                          value={newStatus}
+                          onValueChange={(v) => {
+                            if (v) {
+                              setNewStatus(v);
+                              if (v !== "denied") setDeniedReason("");
+                            }
+                          }}
+                          disabled={isPending}
+                        >
+                          <SelectTrigger id="newStatus">
+                            <SelectValue placeholder="No status change…">
+                              {newStatus
+                                ? (allowedStatuses.find((s) => s.value === newStatus)?.label ?? newStatus)
+                                : "No status change…"}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allowedStatuses.map((s) => (
+                              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  {isDenying && (
+                      {isDenying && (
+                        <div className="space-y-2">
+                          <Label htmlFor="deniedReason">
+                            Denial Reason{" "}
+                            <span className="text-destructive text-xs">(required)</span>
+                          </Label>
+                          <textarea
+                            id="deniedReason"
+                            value={deniedReason}
+                            onChange={(e) => setDeniedReason(e.target.value)}
+                            placeholder="Reason for denying this transaction…"
+                            rows={2}
+                            disabled={isPending}
+                            className="w-full rounded-md border border-destructive/50 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none disabled:opacity-50"
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      No status transitions available from the current state.
+                    </p>
+                  )}
+
+                  {newStatus && (
                     <div className="space-y-2">
-                      <Label htmlFor="deniedReason">
-                        Denial Reason{" "}
-                        <span className="text-destructive text-xs">(required)</span>
+                      <Label htmlFor="noteToPlayer">
+                        Note to Player{" "}
+                        <span className="text-muted-foreground text-xs">(included in email)</span>
                       </Label>
                       <textarea
-                        id="deniedReason"
-                        value={deniedReason}
-                        onChange={(e) => setDeniedReason(e.target.value)}
-                        placeholder="Reason for denying this transaction…"
-                        rows={2}
+                        id="noteToPlayer"
+                        value={noteToPlayer}
+                        onChange={(e) => setNoteToPlayer(e.target.value)}
+                        placeholder="Message for the player…"
+                        rows={3}
                         disabled={isPending}
-                        className="w-full rounded-md border border-destructive/50 bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none disabled:opacity-50"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none disabled:opacity-50"
                       />
                     </div>
                   )}
 
                   <div className="space-y-2">
-                    <Label htmlFor="noteToPlayer">
-                      Note to Player{" "}
-                      <span className="text-muted-foreground text-xs">(optional)</span>
-                    </Label>
-                    <textarea
-                      id="noteToPlayer"
-                      value={noteToPlayer}
-                      onChange={(e) => setNoteToPlayer(e.target.value)}
-                      placeholder="Message for the player…"
-                      rows={3}
-                      disabled={isPending}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
                     <Label htmlFor="internalNote">
                       Internal Note{" "}
-                      <span className="text-muted-foreground text-xs">(optional)</span>
+                      <span className="text-muted-foreground text-xs">(not sent to anyone)</span>
                     </Label>
                     <textarea
                       id="internalNote"
@@ -360,7 +426,7 @@ export function ClerkTransactionView({ transaction: tx }: Props) {
 
                   <Button
                     type="submit"
-                    disabled={isPending || !isValid}
+                    disabled={isPending || !isValid || !isAssigned}
                     className="w-full"
                   >
                     {isPending ? "Updating…" : "Update Transaction"}

@@ -69,10 +69,16 @@ export async function getNextTransactionSequence(
 
 export async function getPlayerById(
   userId: string,
-  cashierId: string
-): Promise<{ id: string } | null> {
+  cashierId: string,
+): Promise<{ id: string; username: string; email: string | null; firstName: string | null; lastName: string | null } | null> {
   const [row] = await db
-    .select({ id: cashierUsers.id })
+    .select({
+      id: cashierUsers.id,
+      username: cashierUsers.username,
+      email: cashierUsers.email,
+      firstName: cashierUsers.firstName,
+      lastName: cashierUsers.lastName,
+    })
     .from(cashierUsers)
     .where(and(eq(cashierUsers.id, userId), eq(cashierUsers.cashierId, cashierId)))
     .limit(1);

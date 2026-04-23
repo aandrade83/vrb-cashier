@@ -42,7 +42,7 @@ export async function masterLoginAction(
   const cookieStore = await cookies();
   cookieStore.set(MASTER_SESSION_COOKIE, token, COOKIE_OPTIONS);
 
-  redirect(result.role === "master_clerk" ? "/master/clerk/dashboard" : "/master/dashboard");
+  redirect(result.role === "master_clerk" ? "/master/clerk/queue" : "/master/dashboard");
 }
 
 export async function masterLogoutAction(): Promise<void> {

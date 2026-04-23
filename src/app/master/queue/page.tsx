@@ -44,7 +44,7 @@ export default async function MasterQueuePage() {
             pending={pending}
             completed={completed}
             cashiers={cashierList.map((c) => ({ id: c.id, name: c.name }))}
-            transactionPath={(tx) => `/master/queue/${tx.id}`}
+            transactionBasePath="/master/queue"
           />
         </div>
       </main>

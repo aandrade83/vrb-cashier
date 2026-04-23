@@ -14,6 +14,9 @@ import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 import { getOrCreateShadowPlayer } from "@/lib/master-actor";
 import { assignName, assignAddress } from "@/data/names-pool";
 import { getUserById } from "@/data/users";
+import { getClerkEmailsForCashier } from "@/data/master-users";
+import { getCashierById } from "@/data/cashiers";
+import { sendNewTransactionEmail, sendTransactionReceivedEmail } from "@/lib/email";
 
 type ActionResult = { success: true; transactionId: string } | { success: false; error: string };
 
@@ -215,6 +218,49 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
     entityId: transaction.id,
     metadata: { type: "payout", methodId, amount, currency },
   });
+
+  // Fire-and-forget notifications — never block the player response
+  void (async () => {
+    try {
+      const [clerkEmails, cashier] = await Promise.all([
+        getClerkEmailsForCashier(cashierId),
+        getCashierById(cashierId),
+      ]);
+      if (!cashier) return;
+      const playerName =
+        [player.firstName, player.lastName].filter(Boolean).join(" ") || player.username;
+
+      await Promise.allSettled([
+        clerkEmails.length > 0
+          ? sendNewTransactionEmail({
+              to: clerkEmails,
+              cashierName: cashier.name,
+              referenceCode,
+              type: "payout",
+              playerName,
+              playerEmail: player.email ?? null,
+              methodName: method.name,
+              amount,
+              currency,
+            })
+          : Promise.resolve(),
+        player.email
+          ? sendTransactionReceivedEmail({
+              to: player.email,
+              cashierName: cashier.name,
+              referenceCode,
+              type: "payout",
+              playerName,
+              methodName: method.name,
+              amount,
+              currency,
+            })
+          : Promise.resolve(),
+      ]);
+    } catch (err) {
+      console.error("[payout] notification emails failed:", err);
+    }
+  })();
 
   return { success: true, transactionId: transaction.id };
 }

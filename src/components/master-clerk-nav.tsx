@@ -2,8 +2,8 @@ import Link from "next/link";
 import { MasterLogoutButton } from "@/app/master/dashboard/logout-button";
 
 const NAV_ITEMS = [
-  { key: "cashiers", label: "Cashiers", href: "/master/clerk/dashboard" },
   { key: "queue", label: "Queue", href: "/master/clerk/queue" },
+  { key: "cashiers", label: "Cashiers", href: "/master/clerk/dashboard" },
   { key: "reports", label: "Reports", href: "/master/clerk/reports" },
 ] as const;
 

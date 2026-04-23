@@ -29,7 +29,7 @@ interface Props {
   pending: MultiQueueTransaction[];
   completed: MultiQueueTransaction[];
   cashiers: Pick<Cashier, "id" | "name">[];
-  transactionPath?: (tx: MultiQueueTransaction) => string;
+  transactionBasePath?: string;
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -47,7 +47,7 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-export function ClerkQueueView({ pending, completed, cashiers, transactionPath }: Props) {
+export function ClerkQueueView({ pending, completed, cashiers, transactionBasePath }: Props) {
   const router = useRouter();
   const [cashierFilter, setCashierFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -69,9 +69,9 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionPath }
   const filteredCompleted = applyFilters(completed);
 
   function handleOpen(tx: MultiQueueTransaction) {
-    if (!transactionPath) return;
+    if (!transactionBasePath) return;
     setOpeningId(tx.id);
-    router.push(transactionPath(tx));
+    router.push(`${transactionBasePath}/${tx.id}`);
   }
 
   function renderHandledBy(tx: MultiQueueTransaction) {
@@ -95,7 +95,7 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionPath }
             <TableHead>Amount</TableHead>
             <TableHead>Submitted</TableHead>
             {showHandledBy && <TableHead>Handled By</TableHead>}
-            {transactionPath && <TableHead></TableHead>}
+            {transactionBasePath && <TableHead></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -119,7 +119,7 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionPath }
                   {renderHandledBy(tx)}
                 </TableCell>
               )}
-              {transactionPath && (
+              {transactionBasePath && (
                 <TableCell>
                   <Button size="sm" onClick={() => handleOpen(tx)} disabled={openingId !== null}>
                     {openingId === tx.id ? "Opening…" : "Open"}

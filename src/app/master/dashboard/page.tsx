@@ -19,7 +19,7 @@ export default async function MasterDashboardPage() {
   const session = await getMasterSessionData(token);
   if (!session) redirect("/master/login");
 
-  if (session.role === "master_clerk") redirect("/master/clerk/dashboard");
+  if (session.role === "master_clerk") redirect("/master/clerk/queue");
 
   // ENV root sees everything; DB admin sees only permitted cashiers (no fallback)
   let allCashiers: Cashier[];

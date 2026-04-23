@@ -114,6 +114,36 @@ export async function getUserCashierPermissions(masterUserId: string): Promise<s
   return rows.map((r) => r.cashierId);
 }
 
+export async function getClerkEmailsForCashier(cashierId: string): Promise<string[]> {
+  const rows = await db
+    .select({ email: masterUsers.email })
+    .from(masterUsers)
+    .innerJoin(userCashierPermissions, eq(userCashierPermissions.masterUserId, masterUsers.id))
+    .where(
+      and(
+        eq(userCashierPermissions.cashierId, cashierId),
+        eq(masterUsers.role, "master_clerk"),
+        eq(masterUsers.isActive, true),
+      ),
+    );
+  return rows.map((r) => r.email);
+}
+
+export async function getAdminEmailsForCashier(cashierId: string): Promise<string[]> {
+  const rows = await db
+    .select({ email: masterUsers.email })
+    .from(masterUsers)
+    .innerJoin(userCashierPermissions, eq(userCashierPermissions.masterUserId, masterUsers.id))
+    .where(
+      and(
+        eq(userCashierPermissions.cashierId, cashierId),
+        eq(masterUsers.role, "master_admin"),
+        eq(masterUsers.isActive, true),
+      ),
+    );
+  return rows.map((r) => r.email);
+}
+
 export async function setUserCashierPermissions(
   masterUserId: string,
   cashierIds: string[],
