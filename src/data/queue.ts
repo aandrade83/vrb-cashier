@@ -385,6 +385,34 @@ export async function getMasterTransactionDetail(
   return { ...row, fieldValues, attachments, updates: updatesRaw };
 }
 
+// ─── Cashier clerk list (for assignment UI) ───────────────────────────────────
+
+export type CashierClerk = {
+  id: string;
+  username: string;
+  firstName: string | null;
+  lastName: string | null;
+};
+
+export async function getCashierClerks(cashierId: string): Promise<CashierClerk[]> {
+  const { and, eq } = await import("drizzle-orm");
+  return db
+    .select({
+      id: cashierUsers.id,
+      username: cashierUsers.username,
+      firstName: cashierUsers.firstName,
+      lastName: cashierUsers.lastName,
+    })
+    .from(cashierUsers)
+    .where(
+      and(
+        eq(cashierUsers.cashierId, cashierId),
+        eq(cashierUsers.role, "clerk"),
+        eq(cashierUsers.isActive, true),
+      ),
+    );
+}
+
 // ─── Clerk lookup ──────────────────────────────────────────────────────────────
 
 export async function getClerkById(

@@ -18,16 +18,20 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { buttonVariants } from "@/lib/button-variants";
 import { cn } from "@/lib/utils";
-import { TX_STATUS_LABEL, TX_STATUS_BADGE_VARIANT, NEXT_STATUSES_ADMIN, TERMINAL_STATUSES } from "@/lib/transaction-statuses";
-import type { MasterTransactionDetail, CashierClerk } from "@/data/queue";
-import { masterUpdateTransactionStatusAction, masterAssignTransactionAction } from "@/app/master/queue/actions";
+import {
+  TX_STATUS_LABEL,
+  TX_STATUS_BADGE_VARIANT,
+  NEXT_STATUSES_CLERK,
+  TERMINAL_STATUSES,
+} from "@/lib/transaction-statuses";
+import type { MasterTransactionDetail } from "@/data/queue";
+import { masterClerkUpdateTransactionStatusAction } from "@/app/master/clerk/queue/actions";
 
 interface Props {
   transaction: MasterTransactionDetail;
-  clerks: CashierClerk[];
 }
 
-export function MasterTransactionView({ transaction: tx, clerks }: Props) {
+export function ClerkTransactionView({ transaction: tx }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [newStatus, setNewStatus] = useState("");
@@ -36,14 +40,11 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
   const [deniedReason, setDeniedReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedClerkId, setSelectedClerkId] = useState(tx.lockedByClerkId ?? "__unassigned__");
-  const [assignPending, setAssignPending] = useState(false);
-  const [assignError, setAssignError] = useState<string | null>(null);
-
   const statusLabel = TX_STATUS_LABEL[tx.status as keyof typeof TX_STATUS_LABEL] ?? tx.status;
-  const statusVariant = TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary";
+  const statusVariant =
+    TX_STATUS_BADGE_VARIANT[tx.status as keyof typeof TX_STATUS_BADGE_VARIANT] ?? "secondary";
 
-  const allowedStatuses = NEXT_STATUSES_ADMIN[tx.status] ?? [];
+  const allowedStatuses = NEXT_STATUSES_CLERK[tx.status] ?? [];
   const isFinalized = TERMINAL_STATUSES.includes(tx.status as never);
   const isDenying = newStatus === "denied";
   const isValid = newStatus !== "" && (!isDenying || deniedReason.trim().length >= 3);
@@ -53,7 +54,7 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
     if (!isValid) return;
     setError(null);
     startTransition(async () => {
-      const result = await masterUpdateTransactionStatusAction({
+      const result = await masterClerkUpdateTransactionStatusAction({
         transactionId: tx.id,
         newStatus,
         noteToPlayer,
@@ -61,40 +62,30 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
         deniedReason: isDenying ? deniedReason : undefined,
       });
       if (result.success) {
-        router.push("/master/queue");
+        router.push("/master/clerk/queue");
       } else {
         setError(result.error);
       }
     });
   }
 
-  async function handleAssign() {
-    setAssignError(null);
-    setAssignPending(true);
-    const clerkId = selectedClerkId === "__unassigned__" ? null : selectedClerkId;
-    const result = await masterAssignTransactionAction({ transactionId: tx.id, clerkId });
-    setAssignPending(false);
-    if (result.success) {
-      router.refresh();
-    } else {
-      setAssignError(result.error);
-    }
-  }
-
   const lockedClerkName = tx.lockedByClerkId
-    ? ([tx.lockedByClerkFirstName, tx.lockedByClerkLastName].filter(Boolean).join(" ") ||
-       tx.lockedByClerkUsername ||
-       "a clerk")
+    ? [tx.lockedByClerkFirstName, tx.lockedByClerkLastName].filter(Boolean).join(" ") ||
+      tx.lockedByClerkUsername ||
+      "a clerk"
     : null;
 
   return (
     <div className="space-y-4">
-      <Link href="/master/queue" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+      <Link
+        href="/master/clerk/queue"
+        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+      >
         ← Back to Queue
       </Link>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* ── Left column: transaction info ── */}
+        {/* ── Left column ── */}
         <div className="space-y-4 lg:col-span-2">
           <Card>
             <CardHeader className="pb-2">
@@ -123,45 +114,57 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
             <CardContent className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Player</p>
-                  <p>{[tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || "—"}</p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
+                    Player
+                  </p>
+                  <p>
+                    {[tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || "—"}
+                  </p>
                   <p className="text-muted-foreground">{tx.playerEmail ?? "—"}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Method</p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
+                    Method
+                  </p>
                   <p>{tx.methodName}</p>
                   <p className="text-muted-foreground capitalize">{tx.methodType}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Amount</p>
-                  <p className="font-medium">{tx.currency} {tx.amount}</p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
+                    Amount
+                  </p>
+                  <p className="font-medium">
+                    {tx.currency} {tx.amount}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Submitted</p>
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
+                    Submitted
+                  </p>
                   <p>{format(tx.createdAt, "do MMM yyyy, HH:mm")}</p>
                 </div>
                 {tx.assignedAt && (
                   <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Assigned</p>
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
+                      Assigned
+                    </p>
                     <p>{format(tx.assignedAt, "do MMM yyyy, HH:mm")}</p>
                   </div>
                 )}
                 {tx.preconfirmedAt && (
                   <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Pre-Confirmed</p>
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
+                      Pre-Confirmed
+                    </p>
                     <p>{format(tx.preconfirmedAt, "do MMM yyyy, HH:mm")}</p>
                   </div>
                 )}
                 {tx.postconfirmedAt && (
                   <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Post-Confirmed</p>
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">
+                      Post-Confirmed
+                    </p>
                     <p>{format(tx.postconfirmedAt, "do MMM yyyy, HH:mm")}</p>
-                  </div>
-                )}
-                {tx.completedAt && (
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Completed</p>
-                    <p>{format(tx.completedAt, "do MMM yyyy, HH:mm")}</p>
                   </div>
                 )}
               </div>
@@ -181,7 +184,12 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
                     </p>
                     {fv.fieldTypeSnapshot === "image" || fv.fieldTypeSnapshot === "file" ? (
                       fv.value ? (
-                        <a href={fv.value} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                        <a
+                          href={fv.value}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline underline-offset-2"
+                        >
                           View attachment
                         </a>
                       ) : (
@@ -190,24 +198,6 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
                     ) : (
                       <p>{fv.value || "—"}</p>
                     )}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {tx.attachments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Attachments</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {tx.attachments.map((att) => (
-                  <div key={att.id}>
-                    <a href={att.fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
-                      {att.fileName}
-                    </a>
-                    <span className="text-muted-foreground ml-2 text-xs">{att.fileType}</span>
                   </div>
                 ))}
               </CardContent>
@@ -226,15 +216,18 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
                     <div className="space-y-1">
                       <p className="text-muted-foreground text-xs">
                         {format(upd.createdAt, "do MMM yyyy, HH:mm")} ·{" "}
-                        {[upd.clerkFirstName, upd.clerkLastName].filter(Boolean).join(" ") || "Master Admin"}
+                        {[upd.clerkFirstName, upd.clerkLastName].filter(Boolean).join(" ") ||
+                          "Master"}
                       </p>
                       <p className="capitalize">
                         <span className="text-muted-foreground">
-                          {TX_STATUS_LABEL[upd.previousStatus as keyof typeof TX_STATUS_LABEL] ?? upd.previousStatus}
+                          {TX_STATUS_LABEL[upd.previousStatus as keyof typeof TX_STATUS_LABEL] ??
+                            upd.previousStatus}
                         </span>
                         {" → "}
                         <strong>
-                          {TX_STATUS_LABEL[upd.newStatus as keyof typeof TX_STATUS_LABEL] ?? upd.newStatus}
+                          {TX_STATUS_LABEL[upd.newStatus as keyof typeof TX_STATUS_LABEL] ??
+                            upd.newStatus}
                         </strong>
                       </p>
                       {upd.noteToPlayer && (
@@ -248,57 +241,21 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
           )}
         </div>
 
-        {/* ── Right column: admin panel ── */}
+        {/* ── Right column ── */}
         <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Assignment</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {lockedClerkName && (
+            <CardContent className="text-sm">
+              {lockedClerkName ? (
                 <p className="text-muted-foreground">
-                  Currently: <strong className="text-foreground">{lockedClerkName}</strong>
+                  Assigned to{" "}
+                  <strong className="text-foreground">{lockedClerkName}</strong>
                   {tx.lockedAt ? ` since ${format(tx.lockedAt, "HH:mm")}` : ""}
                 </p>
-              )}
-              {!isFinalized && (
-                <div className="space-y-2">
-                  <Select
-                    value={selectedClerkId}
-                    onValueChange={(v) => { if (v) setSelectedClerkId(v); }}
-                    disabled={assignPending}
-                  >
-                    <SelectTrigger>
-                      <SelectValue>
-                        {selectedClerkId === "__unassigned__"
-                          ? "Unassigned"
-                          : (clerks.find((c) => c.id === selectedClerkId)
-                              ? ([clerks.find((c) => c.id === selectedClerkId)!.firstName, clerks.find((c) => c.id === selectedClerkId)!.lastName].filter(Boolean).join(" ") || clerks.find((c) => c.id === selectedClerkId)!.username)
-                              : "Select clerk…")}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__unassigned__">— Unassigned —</SelectItem>
-                      {clerks.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {[c.firstName, c.lastName].filter(Boolean).join(" ") || c.username}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {assignError && <p className="text-xs text-destructive">{assignError}</p>}
-                  <Button
-                    size="sm"
-                    className="w-full"
-                    onClick={handleAssign}
-                    disabled={assignPending || selectedClerkId === (tx.lockedByClerkId ?? "__unassigned__")}
-                  >
-                    {assignPending ? "Saving…" : "Save Assignment"}
-                  </Button>
-                </div>
-              )}
-              {isFinalized && !lockedClerkName && (
-                <p className="text-muted-foreground">Not assigned.</p>
+              ) : (
+                <p className="text-muted-foreground">Not assigned to any clerk.</p>
               )}
             </CardContent>
           </Card>
@@ -309,28 +266,41 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
             </CardHeader>
             <CardContent>
               {isFinalized ? (
-                <p className="text-sm text-muted-foreground">This transaction is finalized and cannot be updated.</p>
+                <p className="text-sm text-muted-foreground">
+                  This transaction is finalized and cannot be updated.
+                </p>
               ) : allowedStatuses.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No status transitions available from the current state.</p>
+                <p className="text-sm text-muted-foreground">
+                  No transitions available from the current status. An admin can assign or advance
+                  this transaction.
+                </p>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="newStatus">New Status</Label>
                     <Select
                       value={newStatus}
-                      onValueChange={(v) => { if (v) { setNewStatus(v); if (v !== "denied") setDeniedReason(""); } }}
+                      onValueChange={(v) => {
+                        if (v) {
+                          setNewStatus(v);
+                          if (v !== "denied") setDeniedReason("");
+                        }
+                      }}
                       disabled={isPending}
                     >
                       <SelectTrigger id="newStatus">
                         <SelectValue placeholder="Select a status…">
                           {newStatus
-                            ? (allowedStatuses.find((s) => s.value === newStatus)?.label ?? newStatus)
+                            ? (allowedStatuses.find((s) => s.value === newStatus)?.label ??
+                              newStatus)
                             : "Select a status…"}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {allowedStatuses.map((s) => (
-                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -339,7 +309,8 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
                   {isDenying && (
                     <div className="space-y-2">
                       <Label htmlFor="deniedReason">
-                        Denial Reason <span className="text-destructive text-xs">(required)</span>
+                        Denial Reason{" "}
+                        <span className="text-destructive text-xs">(required)</span>
                       </Label>
                       <textarea
                         id="deniedReason"
@@ -355,7 +326,8 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
 
                   <div className="space-y-2">
                     <Label htmlFor="noteToPlayer">
-                      Note to Player <span className="text-muted-foreground text-xs">(optional)</span>
+                      Note to Player{" "}
+                      <span className="text-muted-foreground text-xs">(optional)</span>
                     </Label>
                     <textarea
                       id="noteToPlayer"
@@ -370,7 +342,8 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
 
                   <div className="space-y-2">
                     <Label htmlFor="internalNote">
-                      Internal Note <span className="text-muted-foreground text-xs">(optional)</span>
+                      Internal Note{" "}
+                      <span className="text-muted-foreground text-xs">(optional)</span>
                     </Label>
                     <textarea
                       id="internalNote"
@@ -385,7 +358,11 @@ export function MasterTransactionView({ transaction: tx, clerks }: Props) {
 
                   {error && <p className="text-sm text-destructive">{error}</p>}
 
-                  <Button type="submit" disabled={isPending || !isValid} className="w-full">
+                  <Button
+                    type="submit"
+                    disabled={isPending || !isValid}
+                    className="w-full"
+                  >
                     {isPending ? "Updating…" : "Update Transaction"}
                   </Button>
                 </form>

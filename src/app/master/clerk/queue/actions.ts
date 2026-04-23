@@ -2,24 +2,19 @@
 
 import { z } from "zod";
 import { db } from "@/db";
-import {
-  transactions,
-  transactionUpdates,
-  notifications,
-  auditLogs,
-  cashierUsers,
-} from "@/db/schema";
+import { transactions, transactionUpdates, notifications, auditLogs } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getMasterSessionFromCookies, getMasterSessionData } from "@/lib/master-auth";
+import { getUserCashierPermissions } from "@/data/master-users";
 import { releasePoolLocks } from "@/data/names-pool";
-import { TERMINAL_STATUSES, NEXT_STATUSES_ADMIN } from "@/lib/transaction-statuses";
+import { TERMINAL_STATUSES, NEXT_STATUSES_CLERK } from "@/lib/transaction-statuses";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
 const updateSchema = z
   .object({
     transactionId: z.string().uuid(),
-    newStatus: z.enum(["preconfirmed", "postconfirmed", "denied", "completed"]),
+    newStatus: z.enum(["preconfirmed", "postconfirmed", "denied"]),
     noteToPlayer: z.string().optional().default(""),
     internalNote: z.string().optional(),
     deniedReason: z.string().optional(),
@@ -29,12 +24,14 @@ const updateSchema = z
     { message: "Denial reason is required when denying a transaction", path: ["deniedReason"] },
   );
 
-export async function masterUpdateTransactionStatusAction(input: unknown): Promise<ActionResult> {
+export async function masterClerkUpdateTransactionStatusAction(
+  input: unknown,
+): Promise<ActionResult> {
   const token = await getMasterSessionFromCookies();
   if (!token) return { success: false, error: "Unauthorized" };
 
   const session = await getMasterSessionData(token);
-  if (!session || session.role !== "master_admin") return { success: false, error: "Unauthorized" };
+  if (!session || session.role !== "master_clerk") return { success: false, error: "Unauthorized" };
 
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
@@ -53,11 +50,19 @@ export async function masterUpdateTransactionStatusAction(input: unknown): Promi
     .limit(1);
 
   if (!tx) return { success: false, error: "Transaction not found" };
+
+  if (session.masterUserId) {
+    const permittedIds = await getUserCashierPermissions(session.masterUserId);
+    if (!permittedIds.includes(tx.cashierId)) {
+      return { success: false, error: "Unauthorized" };
+    }
+  }
+
   if (TERMINAL_STATUSES.includes(tx.status as never)) {
     return { success: false, error: "This transaction has already been finalized." };
   }
 
-  const allowed = (NEXT_STATUSES_ADMIN[tx.status] ?? []).map((s) => s.value);
+  const allowed = (NEXT_STATUSES_CLERK[tx.status] ?? []).map((s) => s.value);
   if (!allowed.includes(newStatus as never)) {
     return { success: false, error: `Cannot transition from ${tx.status} to ${newStatus}.` };
   }
@@ -66,7 +71,6 @@ export async function masterUpdateTransactionStatusAction(input: unknown): Promi
   const cashierId = tx.cashierId;
   const now = new Date();
   const isTerminal = TERMINAL_STATUSES.includes(newStatus as never);
-  const wasUnassigned = previousStatus === "unassigned";
 
   await db
     .update(transactions)
@@ -74,11 +78,8 @@ export async function masterUpdateTransactionStatusAction(input: unknown): Promi
       status: newStatus,
       internalNote: internalNote ?? null,
       ...(newStatus === "denied" ? { deniedReason: deniedReason ?? null } : {}),
-      ...(wasUnassigned ? { assignedAt: now } : {}),
       ...(newStatus === "preconfirmed" ? { preconfirmedAt: now } : {}),
       ...(newStatus === "postconfirmed" ? { postconfirmedAt: now } : {}),
-      ...(newStatus === "completed" ? { completedAt: now } : {}),
-      ...(newStatus === "denied" ? { deniedAt: now } : {}),
       ...(isTerminal ? { lockedByClerkId: null, lockedAt: null, lockExpiresAt: null } : {}),
       updatedAt: now,
     })
@@ -118,90 +119,12 @@ export async function masterUpdateTransactionStatusAction(input: unknown): Promi
     metadata: {
       previousStatus,
       newStatus,
-      masterUserId: session.masterUserId ?? "env_root",
+      masterUserId: session.masterUserId,
       masterRole: session.role,
-      source: "master_queue",
+      source: "master_clerk_queue",
     },
   });
 
-  if (isTerminal) {
-    await releasePoolLocks(transactionId);
-  }
-
-  return { success: true };
-}
-
-// ── Assign transaction to a clerk ────────────────────────────────────────────
-
-export async function masterAssignTransactionAction(input: {
-  transactionId: string;
-  clerkId: string | null;
-}): Promise<ActionResult> {
-  const token = await getMasterSessionFromCookies();
-  if (!token) return { success: false, error: "Unauthorized" };
-
-  const session = await getMasterSessionData(token);
-  if (!session || session.role !== "master_admin") return { success: false, error: "Unauthorized" };
-
-  const parsed = z
-    .object({ transactionId: z.string().uuid(), clerkId: z.string().uuid().nullable() })
-    .safeParse(input);
-  if (!parsed.success) return { success: false, error: "Invalid input" };
-
-  const { transactionId, clerkId } = parsed.data;
-
-  const [tx] = await db
-    .select({ cashierId: transactions.cashierId, status: transactions.status })
-    .from(transactions)
-    .where(eq(transactions.id, transactionId))
-    .limit(1);
-
-  if (!tx) return { success: false, error: "Transaction not found" };
-  if (TERMINAL_STATUSES.includes(tx.status as never)) {
-    return { success: false, error: "Transaction is already finalized." };
-  }
-
-  if (clerkId) {
-    const [clerk] = await db
-      .select({ id: cashierUsers.id })
-      .from(cashierUsers)
-      .where(eq(cashierUsers.id, clerkId))
-      .limit(1);
-    if (!clerk) return { success: false, error: "Clerk not found." };
-  }
-
-  const now = new Date();
-  const lockExpiresAt = clerkId ? new Date(now.getTime() + 30 * 60 * 1000) : null;
-  const wasUnassigned = tx.status === "unassigned";
-
-  await db
-    .update(transactions)
-    .set({
-      lockedByClerkId: clerkId,
-      lockedAt: clerkId ? now : null,
-      lockExpiresAt,
-      ...(clerkId && wasUnassigned
-        ? { status: "pending", assignedAt: now }
-        : !clerkId && tx.status === "pending"
-          ? { status: "unassigned", assignedAt: null }
-          : {}),
-      updatedAt: now,
-    })
-    .where(eq(transactions.id, transactionId));
-
-  await db.insert(auditLogs).values({
-    cashierId: tx.cashierId,
-    actorUserId: null,
-    actorRole: null,
-    action: clerkId ? "transaction.assigned" : "transaction.unassigned",
-    entityType: "transaction",
-    entityId: transactionId,
-    metadata: {
-      clerkId,
-      masterUserId: session.masterUserId ?? "env_root",
-      source: "master_queue",
-    },
-  });
-
+  if (isTerminal) await releasePoolLocks(transactionId);
   return { success: true };
 }

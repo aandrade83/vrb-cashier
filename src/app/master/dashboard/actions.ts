@@ -3,15 +3,36 @@
 import { z } from "zod";
 import { toggleCashierActive, deleteCashier, updateCashier } from "@/data/cashiers";
 import { cloneCashierMethods } from "@/data/methods";
-import { isMasterAuthenticated, verifyMasterPassword } from "@/lib/master-auth";
+import {
+  isMasterAuthenticated,
+  verifyMasterPassword,
+  getMasterSessionFromCookies,
+  getMasterSessionData,
+} from "@/lib/master-auth";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { cashiers } from "@/db/schema";
+import {
+  cashiers,
+  cashierUsers,
+  transactions,
+  notifications,
+  auditLogs,
+  loginAttempts,
+  names,
+  addresses,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 async function requireMaster() {
   const ok = await isMasterAuthenticated();
   if (!ok) throw new Error("Unauthorized");
+}
+
+async function requireEnvRoot(): Promise<boolean> {
+  const token = await getMasterSessionFromCookies();
+  if (!token) return false;
+  const session = await getMasterSessionData(token);
+  return !!(session?.isEnvRoot);
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +126,44 @@ export async function editCashierAction(data: {
     contactEmail: parsed.data.contactEmail || null,
     contactPhone: parsed.data.contactPhone || null,
   });
+
+  revalidatePath("/master/dashboard");
+  return {};
+}
+
+// ---------------------------------------------------------------------------
+// Reset cashier data (ENV root only)
+// Deletes all users + transactions for the cashier, keeping the cashier itself.
+// ---------------------------------------------------------------------------
+
+export async function resetCashierDataAction(data: {
+  id: string;
+  password: string;
+}): Promise<{ error?: string }> {
+  const isEnvRoot = await requireEnvRoot();
+  if (!isEnvRoot) return { error: "Unauthorized — only the ENV root account can reset cashier data." };
+
+  const parsed = z
+    .object({ id: z.string().uuid(), password: z.string().min(1) })
+    .safeParse(data);
+  if (!parsed.success) return { error: "Invalid input" };
+
+  if (!(await verifyMasterPassword(parsed.data.password))) {
+    return { error: "Incorrect master password" };
+  }
+
+  const cashierId = parsed.data.id;
+
+  // FK-safe deletion order. transactionFieldValues, transactionAttachments,
+  // transactionUpdates all cascade from transactions. userSessions cascade from cashierUsers.
+  await db.delete(notifications).where(eq(notifications.cashierId, cashierId));
+  await db.delete(auditLogs).where(eq(auditLogs.cashierId, cashierId));
+  await db.delete(transactions).where(eq(transactions.cashierId, cashierId));
+  // Unlock pool entries (lockedByTransactionId is null after cascade, but isLocked stays true)
+  await db.update(names).set({ isLocked: false, lockedAt: null }).where(eq(names.cashierId, cashierId));
+  await db.update(addresses).set({ isLocked: false, lockedAt: null }).where(eq(addresses.cashierId, cashierId));
+  await db.delete(loginAttempts).where(eq(loginAttempts.cashierId, cashierId));
+  await db.delete(cashierUsers).where(eq(cashierUsers.cashierId, cashierId));
 
   revalidatePath("/master/dashboard");
   return {};

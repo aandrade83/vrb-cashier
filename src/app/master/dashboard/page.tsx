@@ -67,6 +67,7 @@ export default async function MasterDashboardPage() {
                 <CashierCard
                   key={cashier.id}
                   cashier={cashier}
+                  isEnvRoot={session.isEnvRoot}
                   otherCashiers={allCashiers
                     .filter((c) => c.id !== cashier.id)
                     .map((c) => ({ id: c.id, name: c.name }))}
