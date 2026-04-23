@@ -113,7 +113,7 @@ export function MasterTransactionView({ transaction: tx, myClerkId }: Props) {
       ts: tx.createdAt,
       actor: [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") || "Player",
       label: "Transaction submitted",
-      type: "created",
+      type: "created" as const,
     },
     ...tx.updates.map((upd) => ({
       id: upd.id,
