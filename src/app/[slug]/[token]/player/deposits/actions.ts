@@ -13,6 +13,7 @@ import { getUserSession } from "@/lib/auth/session";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 import { getOrCreateShadowPlayer } from "@/lib/master-actor";
 import { assignName, assignAddress } from "@/data/names-pool";
+import { getUserById } from "@/data/users";
 
 type ActionResult = { success: true; transactionId: string } | { success: false; error: string };
 
@@ -55,6 +56,14 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
       const shadow = await getOrCreateShadowPlayer(cashierId);
       if (!shadow) return { success: false, error: "Unauthorized" };
       userId = shadow.id;
+    }
+  }
+
+  // Block unverified players — must verify email before transacting
+  if (userSession && userSession.role === "player") {
+    const playerRecord = await getUserById(userId, cashierId);
+    if (!playerRecord?.emailVerified) {
+      return { success: false, error: "Email verification required." };
     }
   }
 

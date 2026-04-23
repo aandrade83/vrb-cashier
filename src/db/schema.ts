@@ -120,6 +120,15 @@ export const cashierUsers = pgTable(
 
     // Optional — players may not provide email immediately
     email: text("email"),
+
+    // Email verification — required for players before accessing cashier features
+    emailVerified: boolean("email_verified").notNull().default(false),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    verificationCode: text("verification_code"),
+    verificationExpiresAt: timestamp("verification_expires_at", { withTimezone: true }),
+    verificationAttempts: integer("verification_attempts").notNull().default(0),
+    verificationLastSentAt: timestamp("verification_last_sent_at", { withTimezone: true }),
+
     firstName: text("first_name"),
     lastName: text("last_name"),
     avatarUrl: text("avatar_url"),
