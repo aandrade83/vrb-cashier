@@ -2,6 +2,11 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+async function send(payload: Parameters<typeof resend.emails.send>[0]): Promise<void> {
+  const { error } = await resend.emails.send(payload);
+  if (error) throw new Error(`Resend error: ${error.message}`);
+}
+
 export async function sendNewTransactionEmail(opts: {
   to: string[];
   cashierName: string;
@@ -18,7 +23,7 @@ export async function sendNewTransactionEmail(opts: {
   const typeLabel = type === "deposit" ? "Deposit" : "Payout";
   const typeColor = type === "deposit" ? "#16a34a" : "#ea580c";
 
-  await resend.emails.send({
+  await send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: opts.to,
     subject: `New ${typeLabel} – ${referenceCode} | ${cashierName}`,
@@ -121,7 +126,7 @@ export async function sendTransactionStatusUpdateEmail(opts: {
   const statusColor = statusColors[newStatusLabel] ?? "#475569";
 
   for (const address of opts.to) {
-    await resend.emails.send({
+    await send({
       from: process.env.RESEND_FROM_EMAIL!,
       to: [address],
       subject: `${typeLabel} ${referenceCode} — Status Updated to ${newStatusLabel}`,
@@ -216,7 +221,7 @@ export async function sendTransactionReceivedEmail(opts: {
   const typeColor = type === "deposit" ? "#16a34a" : "#ea580c";
   const greeting = playerName ? `Hello, ${playerName}` : "Hello";
 
-  await resend.emails.send({
+  await send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: [opts.to],
     subject: `${typeLabel} Request Received – ${referenceCode}`,
@@ -312,7 +317,7 @@ export async function sendPasswordResetEmail(opts: {
 }): Promise<void> {
   const { to, code } = opts;
 
-  await resend.emails.send({
+  await send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: [to],
     subject: "Reset your Master password",
@@ -370,7 +375,7 @@ export async function sendVerificationEmail(opts: {
 }): Promise<void> {
   const { to, cashierName, code } = opts;
 
-  await resend.emails.send({
+  await send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: [to],
     subject: `Verify your email for ${cashierName}`,
