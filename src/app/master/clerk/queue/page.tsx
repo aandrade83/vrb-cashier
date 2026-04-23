@@ -37,6 +37,7 @@ export default async function ClerkQueuePage() {
             pending={pending}
             completed={completed}
             cashiers={cashiers.map((c) => ({ id: c.id, name: c.name }))}
+            transactionBasePath="/master/clerk/queue"
           />
         </div>
       </main>

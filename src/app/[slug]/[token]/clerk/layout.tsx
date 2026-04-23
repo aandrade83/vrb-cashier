@@ -1,11 +1,17 @@
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/UserMenu";
 import { MasterExitButton } from "@/components/MasterExitButton";
+import { StaffEmailGate } from "@/components/staff-email-gate";
 import Link from "next/link";
 import { getUserSession, getMasterSession } from "@/lib/auth/session";
+import { getCashier } from "@/lib/cashier-context";
 import { db } from "@/db";
 import { cashierUsers, masterUsers } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import {
+  sendStaffVerificationCodeAction,
+  verifyStaffCodeAction,
+} from "../staff-verification-actions";
 
 export default async function CashierClerkLayout({
   children,
@@ -17,9 +23,10 @@ export default async function CashierClerkLayout({
   const { slug, token } = await params;
   const base = `/${slug}/${token}/clerk`;
 
-  const [userSession, masterSession] = await Promise.all([
+  const [userSession, masterSession, cashier] = await Promise.all([
     getUserSession(),
     getMasterSession(),
+    getCashier(),
   ]);
 
   const isMasterActing =
@@ -27,6 +34,9 @@ export default async function CashierClerkLayout({
 
   let username = "";
   let masterUsername = "";
+  let userEmail = "";
+  let requiresVerification = false;
+
   if (isMasterActing && masterSession) {
     if (!masterSession.masterUserId) {
       masterUsername = "ENV Root";
@@ -40,11 +50,37 @@ export default async function CashierClerkLayout({
     }
   } else if (userSession?.type === "cashier") {
     const [user] = await db
-      .select({ username: cashierUsers.username })
+      .select({
+        username: cashierUsers.username,
+        email: cashierUsers.email,
+        emailVerified: cashierUsers.emailVerified,
+      })
       .from(cashierUsers)
       .where(eq(cashierUsers.id, userSession.userId))
       .limit(1);
     username = user?.username ?? "";
+    userEmail = user?.email ?? "";
+    if (user?.email && !user.emailVerified) {
+      requiresVerification = true;
+    }
+  }
+
+  if (requiresVerification) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <header className="border-b px-6 py-3 flex items-center justify-end">
+          <ThemeToggle />
+        </header>
+        <main className="flex-1 flex items-center justify-center p-6">
+          <StaffEmailGate
+            email={userEmail}
+            cashierName={cashier.name}
+            sendCode={sendStaffVerificationCodeAction}
+            verifyCode={verifyStaffCodeAction}
+          />
+        </main>
+      </div>
+    );
   }
 
   return (

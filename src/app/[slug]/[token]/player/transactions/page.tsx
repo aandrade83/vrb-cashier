@@ -14,6 +14,7 @@ import { getPlayerById, getPlayerTransactions } from "@/data/transactions";
 import { STATUS_LABELS } from "@/data/admin-transactions";
 import { TX_STATUS_BADGE_VARIANT } from "@/lib/transaction-statuses";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
+import { getOrCreateShadowPlayer } from "@/lib/master-actor";
 
 export default async function CashierTransactionsPage({
   params,
@@ -27,9 +28,15 @@ export default async function CashierTransactionsPage({
     redirect(`/${slug}/${token}/sign-in`);
   }
 
-  const { userId, cashierId } = access;
+  const { userId, cashierId, isMasterActing } = access;
 
-  const player = userId ? await getPlayerById(userId, cashierId) : null;
+  let resolvedUserId = userId;
+  if (!resolvedUserId && isMasterActing) {
+    const shadow = await getOrCreateShadowPlayer(cashierId);
+    resolvedUserId = shadow?.id ?? null;
+  }
+
+  const player = resolvedUserId ? await getPlayerById(resolvedUserId, cashierId) : null;
   const txList = player ? await getPlayerTransactions(player.id, cashierId) : [];
 
   return (

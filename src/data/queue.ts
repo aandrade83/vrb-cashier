@@ -12,6 +12,15 @@ import { eq, inArray, desc, asc, and } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { ACTIVE_STATUSES } from "@/lib/transaction-statuses";
 
+// Shadow player accounts (`__mp__*`) should never expose internal usernames or
+// auto-generated display names to clerks/admins. Normalize them to "TestAccount".
+function maskShadow<T extends { playerUsername?: string | null; playerFirstName?: string | null; playerLastName?: string | null }>(row: T): T {
+  if (row.playerUsername?.startsWith("__mp__")) {
+    return { ...row, playerUsername: null, playerFirstName: "TestAccount", playerLastName: null };
+  }
+  return row;
+}
+
 // ─── Queue list row ────────────────────────────────────────────────────────────
 
 export type QueueTransaction = {
@@ -58,7 +67,7 @@ function queueSelect(clerkUser: ReturnType<typeof alias>) {
 
 export async function getPendingTransactions(cashierId: string): Promise<QueueTransaction[]> {
   const clerkUser = alias(cashierUsers, "clerk_user");
-  return db
+  const rows = await db
     .select(queueSelect(clerkUser))
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
@@ -66,6 +75,7 @@ export async function getPendingTransactions(cashierId: string): Promise<QueueTr
     .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
     .where(and(eq(transactions.cashierId, cashierId), inArray(transactions.status, ACTIVE_STATUSES)))
     .orderBy(asc(transactions.createdAt));
+  return rows.map(maskShadow);
 }
 
 export async function getRecentTransactions(
@@ -75,7 +85,7 @@ export async function getRecentTransactions(
   limit = 10,
 ): Promise<QueueTransaction[]> {
   const clerkUser = alias(cashierUsers, "clerk_user");
-  return db
+  const rows = await db
     .select(queueSelect(clerkUser))
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
@@ -88,6 +98,7 @@ export async function getRecentTransactions(
     ))
     .orderBy(desc(transactions.createdAt))
     .limit(limit);
+  return rows.map(maskShadow);
 }
 
 // ─── Transaction detail ────────────────────────────────────────────────────────
@@ -249,7 +260,7 @@ export async function getPendingTransactionsMulti(
 ): Promise<MultiQueueTransaction[]> {
   if (cashierIds.length === 0) return [];
   const clerkUser = alias(cashierUsers, "clerk_user");
-  return db
+  const rows = await db
     .select(multiQueueSelect(clerkUser))
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
@@ -260,7 +271,8 @@ export async function getPendingTransactionsMulti(
       inArray(transactions.cashierId, cashierIds),
       inArray(transactions.status, ACTIVE_STATUSES),
     ))
-    .orderBy(asc(transactions.createdAt)) as Promise<MultiQueueTransaction[]>;
+    .orderBy(asc(transactions.createdAt));
+  return (rows as MultiQueueTransaction[]).map(maskShadow);
 }
 
 export async function getRecentTransactionsMulti(
@@ -269,7 +281,7 @@ export async function getRecentTransactionsMulti(
 ): Promise<MultiQueueTransaction[]> {
   if (cashierIds.length === 0) return [];
   const clerkUser = alias(cashierUsers, "clerk_user");
-  return db
+  const rows = await db
     .select(multiQueueSelect(clerkUser))
     .from(transactions)
     .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
@@ -281,7 +293,124 @@ export async function getRecentTransactionsMulti(
       inArray(transactions.status, ["completed", "denied"]),
     ))
     .orderBy(desc(transactions.createdAt))
-    .limit(limit) as Promise<MultiQueueTransaction[]>;
+    .limit(limit);
+  return (rows as MultiQueueTransaction[]).map(maskShadow);
+}
+
+// ─── Master transaction detail (no cashier restriction) ───────────────────────
+
+export type MasterTransactionDetail = TransactionDetail & { cashierId: string };
+
+export async function getMasterTransactionDetail(
+  transactionId: string,
+): Promise<MasterTransactionDetail | null> {
+  const clerkUser = alias(cashierUsers, "clerk_user");
+  const updateClerk = alias(cashierUsers, "update_clerk");
+
+  const [row] = await db
+    .select({
+      id: transactions.id,
+      cashierId: transactions.cashierId,
+      referenceCode: transactions.referenceCode,
+      type: transactions.type,
+      status: transactions.status,
+      amount: transactions.amount,
+      currency: transactions.currency,
+      internalNote: transactions.internalNote,
+      deniedReason: transactions.deniedReason,
+      methodName: paymentMethods.name,
+      methodType: paymentMethods.type,
+      playerFirstName: cashierUsers.firstName,
+      playerLastName: cashierUsers.lastName,
+      playerEmail: cashierUsers.email,
+      lockedByClerkId: transactions.lockedByClerkId,
+      lockedByClerkFirstName: clerkUser.firstName,
+      lockedByClerkLastName: clerkUser.lastName,
+      lockedByClerkUsername: clerkUser.username,
+      lockedAt: transactions.lockedAt,
+      assignedAt: transactions.assignedAt,
+      preconfirmedAt: transactions.preconfirmedAt,
+      postconfirmedAt: transactions.postconfirmedAt,
+      completedAt: transactions.completedAt,
+      deniedAt: transactions.deniedAt,
+      createdAt: transactions.createdAt,
+    })
+    .from(transactions)
+    .innerJoin(cashierUsers, eq(transactions.playerId, cashierUsers.id))
+    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .leftJoin(clerkUser, eq(transactions.lockedByClerkId, clerkUser.id))
+    .where(eq(transactions.id, transactionId))
+    .limit(1);
+
+  if (!row) return null;
+
+  const [fieldValues, attachments, updatesRaw] = await Promise.all([
+    db
+      .select({
+        id: transactionFieldValues.id,
+        fieldLabelSnapshot: transactionFieldValues.fieldLabelSnapshot,
+        fieldTypeSnapshot: transactionFieldValues.fieldTypeSnapshot,
+        value: transactionFieldValues.value,
+      })
+      .from(transactionFieldValues)
+      .where(eq(transactionFieldValues.transactionId, transactionId)),
+
+    db
+      .select({
+        id: transactionAttachments.id,
+        fileName: transactionAttachments.fileName,
+        fileType: transactionAttachments.fileType,
+        fileUrl: transactionAttachments.fileUrl,
+      })
+      .from(transactionAttachments)
+      .where(eq(transactionAttachments.transactionId, transactionId)),
+
+    db
+      .select({
+        id: transactionUpdates.id,
+        clerkFirstName: updateClerk.firstName,
+        clerkLastName: updateClerk.lastName,
+        previousStatus: transactionUpdates.previousStatus,
+        newStatus: transactionUpdates.newStatus,
+        noteToPlayer: transactionUpdates.noteToPlayer,
+        internalNote: transactionUpdates.internalNote,
+        createdAt: transactionUpdates.createdAt,
+      })
+      .from(transactionUpdates)
+      .leftJoin(updateClerk, eq(transactionUpdates.updatedByUserId, updateClerk.id))
+      .where(eq(transactionUpdates.transactionId, transactionId))
+      .orderBy(desc(transactionUpdates.createdAt)),
+  ]);
+
+  return { ...row, fieldValues, attachments, updates: updatesRaw };
+}
+
+// ─── Cashier clerk list (for assignment UI) ───────────────────────────────────
+
+export type CashierClerk = {
+  id: string;
+  username: string;
+  firstName: string | null;
+  lastName: string | null;
+};
+
+export async function getCashierClerks(cashierId: string): Promise<CashierClerk[]> {
+  const { and, eq } = await import("drizzle-orm");
+  return db
+    .select({
+      id: cashierUsers.id,
+      username: cashierUsers.username,
+      firstName: cashierUsers.firstName,
+      lastName: cashierUsers.lastName,
+    })
+    .from(cashierUsers)
+    .where(
+      and(
+        eq(cashierUsers.cashierId, cashierId),
+        eq(cashierUsers.role, "clerk"),
+        eq(cashierUsers.isActive, true),
+      ),
+    );
 }
 
 // ─── Clerk lookup ──────────────────────────────────────────────────────────────

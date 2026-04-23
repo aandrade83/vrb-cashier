@@ -15,6 +15,7 @@ export type AdminTransaction = {
   amount: string;
   currency: string;
   methodName: string;
+  playerUsername: string | null;
   playerFirstName: string | null;
   playerLastName: string | null;
   playerEmail: string | null;
@@ -56,6 +57,7 @@ export async function getAdminTransactions({
       amount: transactions.amount,
       currency: transactions.currency,
       methodName: paymentMethods.name,
+      playerUsername: cashierUsers.username,
       playerFirstName: cashierUsers.firstName,
       playerLastName: cashierUsers.lastName,
       playerEmail: cashierUsers.email,
@@ -73,10 +75,16 @@ export async function getAdminTransactions({
     ))
     .orderBy(desc(transactions.createdAt));
 
-  if (!search) return rows;
+  const masked = rows.map((r) =>
+    r.playerUsername?.startsWith("__mp__")
+      ? { ...r, playerUsername: null, playerFirstName: "TestAccount", playerLastName: null }
+      : r
+  );
+
+  if (!search) return masked;
 
   const q = search.toLowerCase();
-  return rows.filter(
+  return masked.filter(
     (r) =>
       r.referenceCode.toLowerCase().includes(q) ||
       (r.playerEmail ?? "").toLowerCase().includes(q) ||

@@ -183,6 +183,13 @@ export const masterUsers = pgTable(
     mustResetPassword: boolean("must_reset_password").notNull().default(false),
     lastLogin: timestamp("last_login", { withTimezone: true }),
 
+    emailVerified: boolean("email_verified").notNull().default(false),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    verificationCode: text("verification_code"),
+    verificationExpiresAt: timestamp("verification_expires_at", { withTimezone: true }),
+    verificationAttempts: integer("verification_attempts").notNull().default(0),
+    verificationLastSentAt: timestamp("verification_last_sent_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -317,7 +324,7 @@ export const transactions = pgTable(
       .references(() => cashiers.id),
 
     // Human-readable reference shown to the player, e.g. "TXN-2024-000123"
-    referenceCode: text("reference_code").notNull().unique(),
+    referenceCode: text("reference_code").notNull(),
 
     type: methodTypeEnum("type").notNull(), // "deposit" | "payout"
 
@@ -395,7 +402,7 @@ export const transactions = pgTable(
     index("txn_type_idx").on(table.type),
     index("txn_locked_by_idx").on(table.lockedByClerkId),
     index("txn_created_at_idx").on(table.createdAt),
-    uniqueIndex("txn_reference_code_idx").on(table.referenceCode),
+    uniqueIndex("txn_reference_code_idx").on(table.cashierId, table.referenceCode),
   ],
 );
 

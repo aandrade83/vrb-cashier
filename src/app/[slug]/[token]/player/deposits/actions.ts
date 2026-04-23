@@ -9,11 +9,14 @@ import {
   getPlayerById,
 } from "@/data/transactions";
 import { getMethodWithFields } from "@/data/methods";
-import { getUserSession } from "@/lib/auth/session";
+import { getUserSession, getMasterSession } from "@/lib/auth/session";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 import { getOrCreateShadowPlayer } from "@/lib/master-actor";
 import { assignName, assignAddress } from "@/data/names-pool";
 import { getUserById } from "@/data/users";
+import { getClerkEmailsForCashier } from "@/data/master-users";
+import { getCashierById } from "@/data/cashiers";
+import { sendNewTransactionEmail, sendTransactionReceivedEmail } from "@/lib/email";
 
 type ActionResult = { success: true; transactionId: string } | { success: false; error: string };
 
@@ -41,12 +44,15 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
   let userId: string;
   let cashierId: string;
 
-  const userSession = await getUserSession();
-  if (userSession && userSession.role === "player") {
-    userId = userSession.userId;
-    cashierId = userSession.cashierId;
-  } else {
-    // Support master acting as player (e.g. testing from master dashboard)
+  const [userSession, masterSession] = await Promise.all([
+    getUserSession(),
+    getMasterSession(),
+  ]);
+
+  // Master session takes priority — prevents stale player cookie from interfering
+  const isMasterActing = !!(masterSession?.actingCashierId);
+
+  if (isMasterActing) {
     const access = await getCashierPageAccess("player");
     if (!access) return { success: false, error: "Unauthorized" };
     cashierId = access.cashierId;
@@ -57,10 +63,15 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
       if (!shadow) return { success: false, error: "Unauthorized" };
       userId = shadow.id;
     }
+  } else if (userSession && userSession.role === "player") {
+    userId = userSession.userId;
+    cashierId = userSession.cashierId;
+  } else {
+    return { success: false, error: "Unauthorized" };
   }
 
-  // Block unverified players — must verify email before transacting
-  if (userSession && userSession.role === "player") {
+  // Block unverified real players — master sessions bypass this check
+  if (!isMasterActing && userSession?.role === "player") {
     const playerRecord = await getUserById(userId, cashierId);
     if (!playerRecord?.emailVerified) {
       return { success: false, error: "Email verification required." };
@@ -101,21 +112,29 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
   const year = new Date().getFullYear();
   const referenceCode = `DEP-${year}-${seq.toString().padStart(6, "0")}`;
 
-  const [transaction] = await db
-    .insert(transactions)
-    .values({
-      cashierId,
-      type: "deposit",
-      status: "unassigned",
-      playerId: player.id,
-      methodId,
-      amount,
-      expectedAmount: expectedAmount ?? null,
-      currency,
-      referenceCode,
-      idempotencyKey,
-    })
-    .returning({ id: transactions.id });
+  let transaction: { id: string };
+  try {
+    const [row] = await db
+      .insert(transactions)
+      .values({
+        cashierId,
+        type: "deposit",
+        status: "unassigned",
+        playerId: player.id,
+        methodId,
+        amount,
+        expectedAmount: expectedAmount ?? null,
+        currency,
+        referenceCode,
+        idempotencyKey,
+      })
+      .returning({ id: transactions.id });
+    transaction = row;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[deposit] insert failed — cashierId=%s playerId=%s methodId=%s amount=%s error=%s", cashierId, player.id, methodId, amount, msg);
+    return { success: false, error: "Failed to create transaction. Please try again." };
+  }
 
   if (fieldValues.length > 0) {
     await db.insert(transactionFieldValues).values(
@@ -199,6 +218,49 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
     entityId: transaction.id,
     metadata: { type: "deposit", methodId, amount, currency },
   });
+
+  // Fire-and-forget notifications — never block the player response
+  void (async () => {
+    try {
+      const [clerkEmails, cashier] = await Promise.all([
+        getClerkEmailsForCashier(cashierId),
+        getCashierById(cashierId),
+      ]);
+      if (!cashier) return;
+      const playerName =
+        [player.firstName, player.lastName].filter(Boolean).join(" ") || player.username;
+
+      await Promise.allSettled([
+        clerkEmails.length > 0
+          ? sendNewTransactionEmail({
+              to: clerkEmails,
+              cashierName: cashier.name,
+              referenceCode,
+              type: "deposit",
+              playerName,
+              playerEmail: player.email ?? null,
+              methodName: method.name,
+              amount,
+              currency,
+            })
+          : Promise.resolve(),
+        player.email
+          ? sendTransactionReceivedEmail({
+              to: player.email,
+              cashierName: cashier.name,
+              referenceCode,
+              type: "deposit",
+              playerName,
+              methodName: method.name,
+              amount,
+              currency,
+            })
+          : Promise.resolve(),
+      ]);
+    } catch (err) {
+      console.error("[deposit] notification emails failed:", err);
+    }
+  })();
 
   return { success: true, transactionId: transaction.id };
 }

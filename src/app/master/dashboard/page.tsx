@@ -19,7 +19,7 @@ export default async function MasterDashboardPage() {
   const session = await getMasterSessionData(token);
   if (!session) redirect("/master/login");
 
-  if (session.role === "master_clerk") redirect("/master/clerk/dashboard");
+  if (session.role === "master_clerk") redirect("/master/clerk/queue");
 
   // ENV root sees everything; DB admin sees only permitted cashiers (no fallback)
   let allCashiers: Cashier[];
@@ -67,6 +67,7 @@ export default async function MasterDashboardPage() {
                 <CashierCard
                   key={cashier.id}
                   cashier={cashier}
+                  isEnvRoot={session.isEnvRoot}
                   otherCashiers={allCashiers
                     .filter((c) => c.id !== cashier.id)
                     .map((c) => ({ id: c.id, name: c.name }))}

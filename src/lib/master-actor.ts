@@ -110,31 +110,50 @@ export async function getOrCreateShadowPlayer(
   if (!masterSession || masterSession.actingCashierId !== cashierId) return null;
 
   let masterUsername: string;
-  let displayName: string;
+  let masterEmail: string | null = null;
 
   if (!masterSession.masterUserId) {
     masterUsername = "root";
-    displayName = "ENV Root";
   } else {
     const [mu] = await db
-      .select({ username: masterUsers.username })
+      .select({ username: masterUsers.username, email: masterUsers.email })
       .from(masterUsers)
       .where(eq(masterUsers.id, masterSession.masterUserId))
       .limit(1);
     if (!mu) return null;
     masterUsername = mu.username;
-    displayName = mu.username;
+    masterEmail = mu.email;
   }
 
   const shadowUsername = `__mp__${masterUsername}`;
 
   const [existing] = await db
-    .select({ id: cashierUsers.id, username: cashierUsers.username })
+    .select({
+      id: cashierUsers.id,
+      username: cashierUsers.username,
+      email: cashierUsers.email,
+      firstName: cashierUsers.firstName,
+    })
     .from(cashierUsers)
     .where(and(eq(cashierUsers.cashierId, cashierId), eq(cashierUsers.username, shadowUsername)))
     .limit(1);
 
-  if (existing) return existing;
+  if (existing) {
+    // Back-fill email or display name if the row was created before these fixes
+    const needsUpdate = (!existing.email && masterEmail) || existing.firstName !== "TestAccount";
+    if (needsUpdate) {
+      await db
+        .update(cashierUsers)
+        .set({
+          ...(masterEmail ? { email: masterEmail } : {}),
+          firstName: "TestAccount",
+          lastName: null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(cashierUsers.cashierId, cashierId), eq(cashierUsers.username, shadowUsername)));
+    }
+    return { id: existing.id, username: existing.username };
+  }
 
   const [created] = await db
     .insert(cashierUsers)
@@ -143,8 +162,9 @@ export async function getOrCreateShadowPlayer(
       username: shadowUsername,
       passwordHash: "!disabled",
       role: "player",
-      firstName: `Master (${displayName})`,
+      firstName: "TestAccount",
       lastName: null,
+      email: masterEmail,
       isActive: true,
     })
     .returning({ id: cashierUsers.id, username: cashierUsers.username });

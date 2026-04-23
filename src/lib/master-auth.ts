@@ -216,3 +216,94 @@ export async function getMasterUserById(id: string) {
 export async function hashMasterPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, 12);
 }
+
+// ---------------------------------------------------------------------------
+// Email verification helpers for master users
+// ---------------------------------------------------------------------------
+
+export type MasterVerificationStatus = {
+  email: string;
+  mustResetPassword: boolean;
+  emailVerified: boolean;
+  verificationCode: string | null;
+  verificationExpiresAt: Date | null;
+  verificationAttempts: number;
+  verificationLastSentAt: Date | null;
+};
+
+export async function getMasterVerificationStatus(
+  userId: string,
+): Promise<MasterVerificationStatus | null> {
+  const [row] = await db
+    .select({
+      email: masterUsers.email,
+      mustResetPassword: masterUsers.mustResetPassword,
+      emailVerified: masterUsers.emailVerified,
+      verificationCode: masterUsers.verificationCode,
+      verificationExpiresAt: masterUsers.verificationExpiresAt,
+      verificationAttempts: masterUsers.verificationAttempts,
+      verificationLastSentAt: masterUsers.verificationLastSentAt,
+    })
+    .from(masterUsers)
+    .where(eq(masterUsers.id, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function saveMasterVerificationCode(
+  userId: string,
+  code: string,
+  expiresAt: Date,
+): Promise<void> {
+  await db
+    .update(masterUsers)
+    .set({
+      verificationCode: code,
+      verificationExpiresAt: expiresAt,
+      verificationAttempts: 0,
+      verificationLastSentAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(masterUsers.id, userId));
+}
+
+export async function markMasterEmailVerified(userId: string): Promise<void> {
+  await db
+    .update(masterUsers)
+    .set({
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
+      verificationCode: null,
+      verificationExpiresAt: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(masterUsers.id, userId));
+}
+
+export async function incrementMasterVerificationAttempts(userId: string): Promise<void> {
+  await db
+    .update(masterUsers)
+    .set({
+      verificationAttempts: sql`${masterUsers.verificationAttempts} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(masterUsers.id, userId));
+}
+
+// ---------------------------------------------------------------------------
+// Password reset helper for master users
+// ---------------------------------------------------------------------------
+
+export async function resetMasterPassword(
+  userId: string,
+  newPasswordHash: string,
+): Promise<void> {
+  await db
+    .update(masterUsers)
+    .set({
+      passwordHash: newPasswordHash,
+      mustResetPassword: false,
+      updatedAt: new Date(),
+    })
+    .where(eq(masterUsers.id, userId));
+}

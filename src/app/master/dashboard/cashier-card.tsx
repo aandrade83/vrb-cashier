@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Pencil, Trash2, Settings2 } from "lucide-react";
+import { Pencil, Trash2, Settings2, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import {
   toggleCashierActiveAction,
@@ -31,6 +31,7 @@ import {
   deleteCashierAction,
   editCashierAction,
   cloneCashierMethodsAction,
+  resetCashierDataAction,
 } from "./actions";
 import type { Cashier } from "@/db/schema";
 
@@ -39,10 +40,11 @@ const APP_URL =
 
 interface Props {
   cashier: Cashier;
+  isEnvRoot: boolean;
   otherCashiers: Pick<Cashier, "id" | "name">[];
 }
 
-export function CashierCard({ cashier, otherCashiers }: Props) {
+export function CashierCard({ cashier, isEnvRoot, otherCashiers }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [visitLoading, setVisitLoading] = useState<"admin" | "clerk" | "player" | null>(null);
@@ -62,6 +64,12 @@ export function CashierCard({ cashier, otherCashiers }: Props) {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // ── Reset All dialog (ENV root only) ─────────────────────────────────────
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
 
   //const cashierUrl = `${APP_URL}/${cashier.slug}/${cashier.token}/`;
   const cashierUrl = `${APP_URL.replace(/\/$/, "")}/${cashier.slug}/${cashier.token}/`;
@@ -131,6 +139,23 @@ export function CashierCard({ cashier, otherCashiers }: Props) {
       setDeleteError(result.error);
     } else {
       setDeleteOpen(false);
+    }
+  }
+
+  async function handleReset(e: React.FormEvent) {
+    e.preventDefault();
+    setResetError("");
+    setResetLoading(true);
+    const result = await resetCashierDataAction({
+      id: cashier.id,
+      password: resetPassword,
+    });
+    setResetLoading(false);
+    if (result.error) {
+      setResetError(result.error);
+    } else {
+      setResetPassword("");
+      setResetOpen(false);
     }
   }
 
@@ -288,6 +313,17 @@ export function CashierCard({ cashier, otherCashiers }: Props) {
             >
               <Pencil className="h-4 w-4" />
             </Button>
+            {isEnvRoot && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setResetOpen(true)}
+                title="Reset cashier data"
+                className="text-amber-600 hover:text-amber-700"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -427,6 +463,47 @@ export function CashierCard({ cashier, otherCashiers }: Props) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ── Reset All Dialog (ENV root only) ────────────────────────────────── */}
+      {isEnvRoot && (
+        <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reset Cashier Data</DialogTitle>
+              <DialogDescription>
+                This will delete <strong>all users and transactions</strong> for{" "}
+                <strong>{cashier.name}</strong>, resetting it to a clean state. The cashier
+                itself and its payment methods are kept. This cannot be undone. Enter the
+                ENV master password to confirm.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleReset} className="space-y-4 pt-2">
+              {resetError && (
+                <p className="text-sm text-destructive">{resetError}</p>
+              )}
+              <div className="space-y-1">
+                <Label htmlFor="reset-password">ENV Master Password</Label>
+                <Input
+                  id="reset-password"
+                  type="password"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="destructive" disabled={resetLoading}>
+                  {resetLoading ? "Resetting..." : "Reset all data"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 }
