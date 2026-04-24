@@ -7,9 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -21,9 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { MultiQueueTransaction } from "@/data/queue";
+import type { MultiQueueTransaction, PlayerDepositSummaryRow } from "@/data/queue";
 import type { Cashier } from "@/db/schema";
 import { TX_STATUS_LABEL, TX_STATUS_BADGE_VARIANT } from "@/lib/transaction-statuses";
+import { getPlayerDepositSummaryAction } from "@/app/master/queue/actions";
 
 interface Props {
   pending: MultiQueueTransaction[];
@@ -52,6 +60,24 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
   const [cashierFilter, setCashierFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [openingId, setOpeningId] = useState<string | null>(null);
+
+  const [playerDialogName, setPlayerDialogName] = useState<string | null>(null);
+  const [playerSummaryRows, setPlayerSummaryRows] = useState<PlayerDepositSummaryRow[] | null>(null);
+  const [playerSummaryLoading, setPlayerSummaryLoading] = useState(false);
+
+  async function handlePlayerClick(tx: MultiQueueTransaction) {
+    const displayName =
+      tx.playerUsername ||
+      [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") ||
+      tx.playerEmail ||
+      "Player";
+    setPlayerDialogName(displayName);
+    setPlayerSummaryRows(null);
+    setPlayerSummaryLoading(true);
+    const result = await getPlayerDepositSummaryAction(tx.playerId, tx.cashierId);
+    setPlayerSummaryLoading(false);
+    setPlayerSummaryRows(result.success ? result.rows : []);
+  }
 
   function applyFilters(txs: MultiQueueTransaction[]) {
     return txs.filter((tx) => {
@@ -106,9 +132,15 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
               <TableCell><TypeBadge type={tx.type} /></TableCell>
               <TableCell className="text-sm">{tx.methodName}</TableCell>
               <TableCell className="text-sm">
-                {tx.playerUsername ||
-                  [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") ||
-                  tx.playerEmail}
+                <button
+                  type="button"
+                  className="text-left underline underline-offset-2 hover:no-underline text-foreground"
+                  onClick={() => handlePlayerClick(tx)}
+                >
+                  {tx.playerUsername ||
+                    [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") ||
+                    tx.playerEmail}
+                </button>
               </TableCell>
               <TableCell className="text-sm font-medium">{tx.currency} {tx.amount}</TableCell>
               <TableCell className="text-sm text-muted-foreground">
@@ -246,6 +278,50 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
         </Card>
       )}
 
+      {/* ── Player Deposit Summary Dialog ── */}
+      <Dialog open={playerDialogName !== null} onOpenChange={(open) => { if (!open) { setPlayerDialogName(null); setPlayerSummaryRows(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Deposit History — {playerDialogName}</DialogTitle>
+          </DialogHeader>
+          {playerSummaryLoading ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
+          ) : playerSummaryRows && playerSummaryRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No completed deposits found.</p>
+          ) : playerSummaryRows && playerSummaryRows.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Method</TableHead>
+                  <TableHead className="text-center">Count</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {playerSummaryRows.map((row) => (
+                  <TableRow key={row.methodName}>
+                    <TableCell className="text-sm">{row.methodName}</TableCell>
+                    <TableCell className="text-center text-sm">{row.count}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">${row.total.toFixed(2)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="font-semibold">Total</TableCell>
+                  <TableCell className="text-center font-semibold">
+                    {playerSummaryRows.reduce((s, r) => s + r.count, 0)}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    ${playerSummaryRows.reduce((s, r) => s + r.total, 0).toFixed(2)}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       {/* ── Completed ── */}
       <Card>
         <CardHeader>
@@ -276,9 +352,15 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
                     <TableCell><TypeBadge type={tx.type} /></TableCell>
                     <TableCell className="text-sm">{tx.methodName}</TableCell>
                     <TableCell className="text-sm">
-                      {tx.playerUsername ||
-                        [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") ||
-                        tx.playerEmail}
+                      <button
+                        type="button"
+                        className="text-left underline underline-offset-2 hover:no-underline text-foreground"
+                        onClick={() => handlePlayerClick(tx)}
+                      >
+                        {tx.playerUsername ||
+                          [tx.playerFirstName, tx.playerLastName].filter(Boolean).join(" ") ||
+                          tx.playerEmail}
+                      </button>
                     </TableCell>
                     <TableCell className="text-sm font-medium">{tx.currency} {tx.amount}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">

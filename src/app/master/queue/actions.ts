@@ -12,6 +12,7 @@ import {
 import { eq } from "drizzle-orm";
 import { getMasterSessionFromCookies, getMasterSessionData } from "@/lib/master-auth";
 import { releasePoolLocks } from "@/data/names-pool";
+import { getPlayerCompletedDepositSummary, type PlayerDepositSummaryRow } from "@/data/queue";
 import { TERMINAL_STATUSES, NEXT_STATUSES_ADMIN, TX_STATUS_LABEL } from "@/lib/transaction-statuses";
 import { getAdminEmailsForCashier } from "@/data/master-users";
 import { getCashierById } from "@/data/cashiers";
@@ -290,4 +291,17 @@ export async function masterAdminTakeTransactionAction(input: {
   });
 
   return { success: true };
+}
+
+export async function getPlayerDepositSummaryAction(
+  playerId: string,
+  cashierId: string,
+): Promise<{ success: true; rows: PlayerDepositSummaryRow[] } | { success: false; error: string }> {
+  const token = await getMasterSessionFromCookies();
+  if (!token) return { success: false, error: "Unauthorized" };
+  const session = await getMasterSessionData(token);
+  if (!session) return { success: false, error: "Unauthorized" };
+
+  const rows = await getPlayerCompletedDepositSummary(playerId, cashierId);
+  return { success: true, rows };
 }

@@ -230,6 +230,10 @@ export const paymentMethods = pgTable(
     // Soft-delete: deactivated methods remain visible in historical transactions
     isDeleted: boolean("is_deleted").notNull().default(false),
 
+    // Minimum number of completed deposits a player must have before this method is available.
+    // Default 1 means available immediately; higher values gate "trusted" methods.
+    activateNumber: integer("activate_number").notNull().default(1),
+
     // NULL = created by master (no cashier admin context).
     createdByAdminId: uuid("created_by_admin_id").references(
       () => cashierUsers.id,

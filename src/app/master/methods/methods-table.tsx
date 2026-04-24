@@ -107,7 +107,8 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
-              <TableHead>Fields</TableHead>
+              <TableHead className="text-center" title="Number of form fields">Fields</TableHead>
+              <TableHead className="text-center" title="Minimum completed deposits a player needs before this method unlocks">Min Dep</TableHead>
               <TableHead>Active</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -134,7 +135,8 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
                     {method.type}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{method.fieldCount}</TableCell>
+                <TableCell className="text-center text-muted-foreground">{method.fieldCount}</TableCell>
+                <TableCell className="text-center text-muted-foreground">{method.activateNumber}</TableCell>
                 <TableCell>
                   <Switch
                     checked={method.isActive}

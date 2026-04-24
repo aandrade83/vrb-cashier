@@ -116,6 +116,7 @@ export function CreateMethodForm({
 
   // Section C
   const [isActive, setIsActive] = useState(false);
+  const [activateNumber, setActivateNumber] = useState(1);
 
   async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -214,6 +215,7 @@ export function CreateMethodForm({
       description: description || null,
       logoUrl: logoUrl || null,
       isActive,
+      activateNumber,
       fields: fields.map((f) => ({
         label: f.label,
         placeholder: f.placeholder || null,
@@ -683,7 +685,7 @@ export function CreateMethodForm({
         <CardHeader>
           <CardTitle>Settings</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -695,6 +697,20 @@ export function CreateMethodForm({
               Active — players can see and use this method
             </span>
           </label>
+          <div className="space-y-1">
+            <Label htmlFor="activateNumber">Min. completed deposits to unlock</Label>
+            <Input
+              id="activateNumber"
+              type="number"
+              min={1}
+              value={activateNumber}
+              onChange={(e) => setActivateNumber(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-24"
+            />
+            <p className="text-xs text-muted-foreground">
+              How many completed deposits a player must have before this method becomes available. Default: 1.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

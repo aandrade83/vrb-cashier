@@ -46,6 +46,7 @@ const methodSchema = z.object({
   description: z.string().optional().nullable(),
   logoUrl: z.string().url().optional().nullable().or(z.literal("")),
   isActive: z.boolean(),
+  activateNumber: z.number().int().min(1).default(1),
   fields: z.array(fieldSchema),
 });
 
