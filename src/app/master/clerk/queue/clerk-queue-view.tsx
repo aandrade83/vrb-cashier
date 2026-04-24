@@ -287,7 +287,7 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
       <Dialog open={playerDialogName !== null} onOpenChange={(open) => { if (!open) { setPlayerDialogName(null); setPlayerSummaryRows(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Deposit History — {playerDialogName}</DialogTitle>
+            <DialogTitle className="uppercase">Deposit History — {playerDialogName}</DialogTitle>
           </DialogHeader>
           {playerSummaryLoading ? (
             <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
@@ -305,7 +305,11 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
               <TableBody>
                 {playerSummaryRows.map((row) => (
                   <TableRow key={row.methodName}>
-                    <TableCell className="text-sm">{row.methodName}</TableCell>
+                    <TableCell className="text-sm">
+                      <span title={row.methodName} className="cursor-default">
+                        {row.methodName.split(/\s+/)[0]}…
+                      </span>
+                    </TableCell>
                     <TableCell className="text-center text-sm">{row.count}</TableCell>
                     <TableCell className="text-right text-sm font-medium">${row.total.toFixed(2)}</TableCell>
                   </TableRow>
