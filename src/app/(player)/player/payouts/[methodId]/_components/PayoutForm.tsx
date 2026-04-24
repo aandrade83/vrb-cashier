@@ -17,10 +17,14 @@ import { submitPayoutAction } from "@/app/[slug]/[token]/player/payouts/actions"
 import type { PaymentMethod, MethodField } from "@/db/schema";
 import { buildPath } from "@/lib/paths";
 
+type SubmitResult = { success: true; transactionId: string } | { success: false; error: string };
+
 type Props = {
   method: PaymentMethod;
   fields: MethodField[];
   basePath?: string;
+  submitAction?: (data: unknown) => Promise<SubmitResult>;
+  onSuccess?: () => void;
 };
 
 type FileUploadState = {
@@ -68,7 +72,7 @@ function HiddenLabelField({ field }: { field: MethodField }) {
   );
 }
 
-export function PayoutForm({ fields, basePath }: Props) {
+export function PayoutForm({ fields, basePath, submitAction, onSuccess }: Props) {
   const router = useRouter();
   const idempotencyKey = useRef(crypto.randomUUID());
 
@@ -187,7 +191,8 @@ export function PayoutForm({ fields, basePath }: Props) {
 
     const amountValue = amountField ? (fieldValues[amountField.id] ?? "0") : "0";
 
-    const result = await submitPayoutAction({
+    const action = submitAction ?? submitPayoutAction;
+    const result = await action({
       methodId: fields[0]?.methodId ?? "",
       fieldValues: fields
         .filter((f) => !isExcluded(f.fieldType))
@@ -209,7 +214,11 @@ export function PayoutForm({ fields, basePath }: Props) {
       return;
     }
 
-    router.push(buildPath(basePath ?? "", "player", "transactions"));
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      router.push(buildPath(basePath ?? "", "player", "transactions"));
+    }
   }
 
   const anyUploading = Object.values(fileState).some((s) => s.uploading);
@@ -245,7 +254,7 @@ export function PayoutForm({ fields, basePath }: Props) {
                   {randomSelections[field.id] ?? "—"}
                 </p>
               </div>
-            ) : field.fieldType === "hyperlink" ? (
+            ) : (field.fieldType as string) === "hyperlink" ? (
               (() => {
                 const url = field.placeholder;
                 if (!url) return null;

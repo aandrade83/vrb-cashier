@@ -305,14 +305,16 @@ export function CashierCard({ cashier, isEnvRoot, otherCashiers }: Props) {
             >
               <Settings2 className="h-4 w-4" />
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setEditOpen(true)}
-              title="Edit cashier"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
+            {cashier.slug !== "vrb" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setEditOpen(true)}
+                title="Edit cashier"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
             {isEnvRoot && (
               <Button
                 variant="ghost"
@@ -324,22 +326,24 @@ export function CashierCard({ cashier, isEnvRoot, otherCashiers }: Props) {
                 <RotateCcw className="h-4 w-4" />
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDeleteOpen(true)}
-              title="Delete cashier"
-              className="text-destructive hover:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {cashier.slug !== "vrb" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDeleteOpen(true)}
+                title="Delete cashier"
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
           </div>
         </CardFooter>
       </Card>
 
       {/* ── Edit Dialog ─────────────────────────────────────────────────────── */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      {cashier.slug !== "vrb" && <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Cashier</DialogTitle>
@@ -424,45 +428,47 @@ export function CashierCard({ cashier, isEnvRoot, otherCashiers }: Props) {
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       {/* ── Delete Dialog ────────────────────────────────────────────────────── */}
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Cashier</DialogTitle>
-            <DialogDescription>
-              This will permanently delete <strong>{cashier.name}</strong> and all
-              its data. This action cannot be undone. Enter the master password to
-              confirm.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleDelete} className="space-y-4 pt-2">
-            {deleteError && (
-              <p className="text-sm text-destructive">{deleteError}</p>
-            )}
-            <div className="space-y-1">
-              <Label htmlFor="delete-password">Master Password</Label>
-              <Input
-                id="delete-password"
-                type="password"
-                value={deletePassword}
-                onChange={(e) => setDeletePassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="destructive" disabled={deleteLoading}>
-                {deleteLoading ? "Deleting..." : "Delete cashier"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {cashier.slug !== "vrb" && (
+        <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Cashier</DialogTitle>
+              <DialogDescription>
+                This will permanently delete <strong>{cashier.name}</strong> and all
+                its data. This action cannot be undone. Enter the master password to
+                confirm.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleDelete} className="space-y-4 pt-2">
+              {deleteError && (
+                <p className="text-sm text-destructive">{deleteError}</p>
+              )}
+              <div className="space-y-1">
+                <Label htmlFor="delete-password">Master Password</Label>
+                <Input
+                  id="delete-password"
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="destructive" disabled={deleteLoading}>
+                  {deleteLoading ? "Deleting..." : "Delete cashier"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* ── Reset All Dialog (ENV root only) ────────────────────────────────── */}
       {isEnvRoot && (

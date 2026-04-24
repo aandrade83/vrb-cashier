@@ -24,8 +24,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Eye, Pencil, Trash2 } from "lucide-react";
-import { toggleGlobalMethodActiveAction, deleteGlobalMethodAction, getMethodPreviewAction } from "./actions";
+import { toggleGlobalMethodActiveAction, deleteGlobalMethodAction, getMethodPreviewAction, submitPreviewTransactionAction } from "./actions";
 import { DepositForm } from "@/app/(player)/player/deposits/[methodId]/_components/DepositForm";
+import { PayoutForm } from "@/app/(player)/player/payouts/[methodId]/_components/PayoutForm";
 import type { MethodWithFieldCount, MethodWithFields } from "@/data/methods";
 
 type Filter = "all" | "deposit" | "payout";
@@ -40,6 +41,7 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
 
   const [previewMethod, setPreviewMethod] = useState<MethodWithFields | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewSuccess, setPreviewSuccess] = useState(false);
 
   const filtered =
     filter === "all" ? methods : methods.filter((m) => m.type === filter);
@@ -179,7 +181,7 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
       )}
 
       {/* Preview dialog */}
-      <Dialog open={!!previewMethod} onOpenChange={(open) => { if (!open) setPreviewMethod(null); }}>
+      <Dialog open={!!previewMethod} onOpenChange={(open) => { if (!open) { setPreviewMethod(null); setPreviewSuccess(false); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
@@ -197,7 +199,7 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
               {previewMethod?.name}
             </DialogTitle>
             <DialogDescription>
-              Player view — submit is disabled in preview.
+              Live test — transaction will be submitted to the VRB cashier.
             </DialogDescription>
           </DialogHeader>
 
@@ -207,13 +209,30 @@ export function MethodsTable({ methods }: { methods: MethodWithFieldCount[] }) {
             </div>
           )}
 
-          {previewMethod && (
+          {previewSuccess ? (
+            <div className="py-6 text-center space-y-4">
+              <p className="text-sm text-green-700 bg-green-50 rounded-lg border border-green-200 p-3">
+                Test transaction submitted to VRB cashier successfully.
+              </p>
+              <Button variant="outline" onClick={() => { setPreviewMethod(null); setPreviewSuccess(false); }}>
+                Close
+              </Button>
+            </div>
+          ) : previewMethod?.type === "deposit" ? (
             <DepositForm
               method={previewMethod}
               fields={previewMethod.fields}
-              previewMode
+              submitAction={submitPreviewTransactionAction}
+              onSuccess={() => setPreviewSuccess(true)}
             />
-          )}
+          ) : previewMethod ? (
+            <PayoutForm
+              method={previewMethod}
+              fields={previewMethod.fields}
+              submitAction={submitPreviewTransactionAction}
+              onSuccess={() => setPreviewSuccess(true)}
+            />
+          ) : null}
         </DialogContent>
       </Dialog>
 

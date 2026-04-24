@@ -135,7 +135,9 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
               <TableCell className="font-mono text-sm">{tx.referenceCode}</TableCell>
               {showCashier && <TableCell className="text-sm">{tx.cashierName}</TableCell>}
               <TableCell><TypeBadge type={tx.type} /></TableCell>
-              <TableCell className="text-sm">{tx.methodName}</TableCell>
+              <TableCell className="text-sm max-w-[160px]">
+                <span className="block truncate" title={tx.methodName}>{tx.methodName}</span>
+              </TableCell>
               <TableCell className="text-sm">
                 <button
                   type="button"
@@ -351,6 +353,7 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
                   <TableHead>Amount</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
+                  {transactionBasePath && <TableHead></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -359,7 +362,9 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
                     <TableCell className="font-mono text-sm">{tx.referenceCode}</TableCell>
                     <TableCell className="text-sm">{tx.cashierName}</TableCell>
                     <TableCell><TypeBadge type={tx.type} /></TableCell>
-                    <TableCell className="text-sm">{tx.methodName}</TableCell>
+                    <TableCell className="text-sm max-w-[160px]">
+                      <span className="block truncate" title={tx.methodName}>{tx.methodName}</span>
+                    </TableCell>
                     <TableCell className="text-sm">
                       <button
                         type="button"
@@ -380,6 +385,13 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
                         {TX_STATUS_LABEL[tx.status as keyof typeof TX_STATUS_LABEL] ?? tx.status}
                       </Badge>
                     </TableCell>
+                    {transactionBasePath && (
+                      <TableCell>
+                        <Button size="sm" variant="outline" onClick={() => handleOpen(tx)} disabled={openingId !== null}>
+                          {openingId === tx.id ? "Opening…" : "Open"}
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
