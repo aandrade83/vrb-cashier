@@ -134,7 +134,7 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
               <TableCell className="text-sm">
                 <button
                   type="button"
-                  className="text-left underline underline-offset-2 hover:no-underline text-foreground"
+                  className="text-left underline underline-offset-2 hover:no-underline text-foreground uppercase"
                   onClick={() => handlePlayerClick(tx)}
                 >
                   {tx.playerUsername ||
@@ -354,7 +354,7 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
                     <TableCell className="text-sm">
                       <button
                         type="button"
-                        className="text-left underline underline-offset-2 hover:no-underline text-foreground"
+                        className="text-left underline underline-offset-2 hover:no-underline text-foreground uppercase"
                         onClick={() => handlePlayerClick(tx)}
                       >
                         {tx.playerUsername ||
