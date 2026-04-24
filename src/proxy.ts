@@ -113,6 +113,7 @@ export default async function proxy(req: NextRequest) {
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/master/") ||
     pathname.startsWith("/api/cashier/") ||
+    pathname.startsWith("/api/cashier-lookup") ||
     pathname.startsWith("/api/cron/") ||
     pathname.startsWith("/api/upload") ||
     pathname.startsWith("/api/migrate")
