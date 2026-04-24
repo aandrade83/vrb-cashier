@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +60,11 @@ export function ClerkQueueView({ pending, completed, cashiers, transactionBasePa
   const [cashierFilter, setCashierFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [openingId, setOpeningId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = setInterval(() => router.refresh(), 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [router]);
 
   const [playerDialogName, setPlayerDialogName] = useState<string | null>(null);
   const [playerSummaryRows, setPlayerSummaryRows] = useState<PlayerDepositSummaryRow[] | null>(null);
