@@ -232,6 +232,20 @@ export function DepositForm({ fields, basePath, previewMode = false }: Props) {
             </div>
           );
         }
+        if (field.fieldType === "hyperlink") {
+          return (
+            <div key={field.id}>
+              <a
+                href={field.placeholder ?? "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-primary underline underline-offset-2 hover:no-underline"
+              >
+                {field.label}
+              </a>
+            </div>
+          );
+        }
         if (isExcluded(field.fieldType)) return null;
 
         return (
