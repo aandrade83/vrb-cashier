@@ -27,6 +27,7 @@ export type MethodInput = {
   description?: string | null;
   logoUrl?: string | null;
   isActive: boolean;
+  activateNumber?: number;
   fields: FieldInput[];
 };
 
@@ -165,23 +166,8 @@ export async function getMethodsForAdmin(
   cashierId: string,
   type: "deposit" | "payout",
 ): Promise<MethodWithFieldCount[]> {
-  const rows = await db
-    .select({
-      id: paymentMethods.id,
-      cashierId: paymentMethods.cashierId,
-      name: paymentMethods.name,
-      type: paymentMethods.type,
-      description: paymentMethods.description,
-      logoUrl: paymentMethods.logoUrl,
-      isActive: paymentMethods.isActive,
-      isDeleted: paymentMethods.isDeleted,
-      createdByAdminId: paymentMethods.createdByAdminId,
-      createdAt: paymentMethods.createdAt,
-      updatedAt: paymentMethods.updatedAt,
-      fieldCount: sql<number>`(
-        select count(*) from method_fields where method_fields.method_id = ${paymentMethods.id}
-      )`,
-    })
+  const methods = await db
+    .select()
     .from(paymentMethods)
     .where(
       and(
@@ -192,7 +178,16 @@ export async function getMethodsForAdmin(
     )
     .orderBy(paymentMethods.createdAt);
 
-  return rows.map((r) => ({ ...r, fieldCount: Number(r.fieldCount) }));
+  if (methods.length === 0) return [];
+
+  const fieldCountRows = await db
+    .select({ methodId: methodFields.methodId, cnt: count() })
+    .from(methodFields)
+    .where(inArray(methodFields.methodId, methods.map((m) => m.id)))
+    .groupBy(methodFields.methodId);
+
+  const countMap = new Map(fieldCountRows.map((r) => [r.methodId, Number(r.cnt)]));
+  return methods.map((m) => ({ ...m, fieldCount: countMap.get(m.id) ?? 0 }));
 }
 
 export async function getMethodById(
@@ -240,6 +235,7 @@ export async function createMethod(
       description: data.description ?? null,
       logoUrl: data.logoUrl ?? null,
       isActive: data.isActive,
+      activateNumber: data.activateNumber ?? 1,
       createdByAdminId: adminUserId,
     })
     .returning({ id: paymentMethods.id });
@@ -293,6 +289,7 @@ export async function updateMethod(
       description: data.description ?? null,
       logoUrl: data.logoUrl ?? null,
       isActive: data.isActive,
+      activateNumber: data.activateNumber ?? 1,
       updatedAt: new Date(),
     })
     .where(eq(paymentMethods.id, id));
@@ -388,23 +385,8 @@ export async function toggleMethodActive(
 export async function getGlobalMethodsWithFieldCount(
   type?: "deposit" | "payout",
 ): Promise<MethodWithFieldCount[]> {
-  const rows = await db
-    .select({
-      id: paymentMethods.id,
-      cashierId: paymentMethods.cashierId,
-      name: paymentMethods.name,
-      type: paymentMethods.type,
-      description: paymentMethods.description,
-      logoUrl: paymentMethods.logoUrl,
-      isActive: paymentMethods.isActive,
-      isDeleted: paymentMethods.isDeleted,
-      createdByAdminId: paymentMethods.createdByAdminId,
-      createdAt: paymentMethods.createdAt,
-      updatedAt: paymentMethods.updatedAt,
-      fieldCount: sql<number>`(
-        select count(*) from method_fields where method_fields.method_id = ${paymentMethods.id}
-      )`,
-    })
+  const methods = await db
+    .select()
     .from(paymentMethods)
     .where(
       and(
@@ -414,7 +396,16 @@ export async function getGlobalMethodsWithFieldCount(
     )
     .orderBy(paymentMethods.type, paymentMethods.createdAt);
 
-  return rows.map((r) => ({ ...r, fieldCount: Number(r.fieldCount) }));
+  if (methods.length === 0) return [];
+
+  const fieldCountRows = await db
+    .select({ methodId: methodFields.methodId, cnt: count() })
+    .from(methodFields)
+    .where(inArray(methodFields.methodId, methods.map((m) => m.id)))
+    .groupBy(methodFields.methodId);
+
+  const countMap = new Map(fieldCountRows.map((r) => [r.methodId, Number(r.cnt)]));
+  return methods.map((m) => ({ ...m, fieldCount: countMap.get(m.id) ?? 0 }));
 }
 
 export async function getGlobalMethodById(id: string): Promise<MethodWithFields | null> {
@@ -449,6 +440,7 @@ export async function createGlobalMethod(data: MethodInput): Promise<string> {
       description: data.description ?? null,
       logoUrl: data.logoUrl ?? null,
       isActive: data.isActive,
+      activateNumber: data.activateNumber ?? 1,
       createdByAdminId: null,
     })
     .returning({ id: paymentMethods.id });
@@ -482,6 +474,7 @@ export async function updateGlobalMethod(id: string, data: MethodInput): Promise
       description: data.description ?? null,
       logoUrl: data.logoUrl ?? null,
       isActive: data.isActive,
+      activateNumber: data.activateNumber ?? 1,
       updatedAt: new Date(),
     })
     .where(and(eq(paymentMethods.id, id), eq(paymentMethods.isDeleted, false)));

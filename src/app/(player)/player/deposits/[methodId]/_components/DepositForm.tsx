@@ -17,11 +17,15 @@ import { submitDepositAction } from "@/app/[slug]/[token]/player/deposits/action
 import type { PaymentMethod, MethodField } from "@/db/schema";
 import { buildPath } from "@/lib/paths";
 
+type SubmitResult = { success: true; transactionId: string } | { success: false; error: string };
+
 type Props = {
   method: PaymentMethod;
   fields: MethodField[];
   basePath?: string;
   previewMode?: boolean;
+  submitAction?: (data: unknown) => Promise<SubmitResult>;
+  onSuccess?: () => void;
 };
 
 type FileUploadState = {
@@ -69,7 +73,7 @@ function HiddenLabelField({ field }: { field: MethodField }) {
   );
 }
 
-export function DepositForm({ fields, basePath, previewMode = false }: Props) {
+export function DepositForm({ fields, basePath, previewMode = false, submitAction, onSuccess }: Props) {
   const router = useRouter();
   const idempotencyKey = useRef(crypto.randomUUID());
 
@@ -189,7 +193,8 @@ export function DepositForm({ fields, basePath, previewMode = false }: Props) {
 
     const amountValue = amountField ? (fieldValues[amountField.id] ?? "0") : "0";
 
-    const result = await submitDepositAction({
+    const action = submitAction ?? submitDepositAction;
+    const result = await action({
       methodId: fields[0]?.methodId ?? "",
       fieldValues: fields
         .filter((f) => !isExcluded(f.fieldType))
@@ -211,7 +216,11 @@ export function DepositForm({ fields, basePath, previewMode = false }: Props) {
       return;
     }
 
-    router.push(buildPath(basePath ?? "", "player", "transactions"));
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      router.push(buildPath(basePath ?? "", "player", "transactions"));
+    }
   }
 
   const anyUploading = Object.values(fileState).some((s) => s.uploading);
@@ -232,6 +241,23 @@ export function DepositForm({ fields, basePath, previewMode = false }: Props) {
             </div>
           );
         }
+        if (field.fieldType === "hyperlink") {
+          const url = field.placeholder;
+          if (!url) return null;
+          return (
+            <div key={field.id}>
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-800 dark:hover:text-blue-300 cursor-pointer"
+              >
+                {field.label}
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+              </a>
+            </div>
+          );
+        }
         if (isExcluded(field.fieldType)) return null;
 
         return (
@@ -243,6 +269,22 @@ export function DepositForm({ fields, basePath, previewMode = false }: Props) {
                   {randomSelections[field.id] ?? "—"}
                 </p>
               </div>
+            ) : (field.fieldType as string) === "hyperlink" ? (
+              (() => {
+                const url = field.placeholder;
+                if (!url) return null;
+                return (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-800 dark:hover:text-blue-300 cursor-pointer"
+                  >
+                    {field.label}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                  </a>
+                );
+              })()
             ) : (
               <>
             <Label htmlFor={field.id}>

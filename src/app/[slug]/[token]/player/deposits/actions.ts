@@ -108,9 +108,12 @@ export async function submitDepositAction(data: unknown): Promise<ActionResult> 
     return { success: false, error: "Player account not found." };
   }
 
-  const seq = await getNextTransactionSequence("deposit", cashierId);
-  const year = new Date().getFullYear();
-  const referenceCode = `DEP-${year}-${seq.toString().padStart(6, "0")}`;
+  const [seq, cashierForRef] = await Promise.all([
+    getNextTransactionSequence("deposit", cashierId),
+    getCashierById(cashierId),
+  ]);
+  if (!cashierForRef) return { success: false, error: "Cashier not found." };
+  const referenceCode = `DEP-${cashierForRef.slug.toUpperCase()}-${seq.toString().padStart(6, "0")}`;
 
   let transaction: { id: string };
   try {

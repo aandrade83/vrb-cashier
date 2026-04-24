@@ -8,7 +8,7 @@ import {
   transactionAttachments,
   transactionUpdates,
 } from "@/db/schema";
-import { eq, inArray, desc, asc, and } from "drizzle-orm";
+import { eq, inArray, desc, asc, and, count, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { ACTIVE_STATUSES } from "@/lib/transaction-statuses";
 
@@ -31,6 +31,7 @@ export type QueueTransaction = {
   amount: string;
   currency: string;
   methodName: string;
+  playerId: string;
   playerFirstName: string | null;
   playerLastName: string | null;
   playerEmail: string | null;
@@ -52,6 +53,7 @@ function queueSelect(clerkUser: ReturnType<typeof alias>) {
     amount: transactions.amount,
     currency: transactions.currency,
     methodName: paymentMethods.name,
+    playerId: transactions.playerId,
     playerFirstName: cashierUsers.firstName,
     playerLastName: cashierUsers.lastName,
     playerEmail: cashierUsers.email,
@@ -411,6 +413,44 @@ export async function getCashierClerks(cashierId: string): Promise<CashierClerk[
         eq(cashierUsers.isActive, true),
       ),
     );
+}
+
+// ─── Player deposit history (for queue popup) ─────────────────────────────────
+
+export type PlayerDepositSummaryRow = {
+  methodName: string;
+  count: number;
+  total: number;
+};
+
+export async function getPlayerCompletedDepositSummary(
+  playerId: string,
+  cashierId: string,
+): Promise<PlayerDepositSummaryRow[]> {
+  const rows = await db
+    .select({
+      methodName: paymentMethods.name,
+      cnt: count(),
+      total: sql<string>`sum(${transactions.amount}::numeric)`,
+    })
+    .from(transactions)
+    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .where(
+      and(
+        eq(transactions.playerId, playerId),
+        eq(transactions.cashierId, cashierId),
+        eq(transactions.type, "deposit"),
+        eq(transactions.status, "completed"),
+      ),
+    )
+    .groupBy(paymentMethods.id, paymentMethods.name)
+    .orderBy(desc(count()));
+
+  return rows.map((r) => ({
+    methodName: r.methodName,
+    count: Number(r.cnt),
+    total: Number(r.total ?? 0),
+  }));
 }
 
 // ─── Clerk lookup ──────────────────────────────────────────────────────────────

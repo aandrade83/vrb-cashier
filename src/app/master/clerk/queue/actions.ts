@@ -86,6 +86,47 @@ export async function masterClerkUpdateTransactionStatusAction(
     return { success: false, error: `Cannot transition from ${tx.status} to ${newStatus}.` };
   }
 
+  // Resolve shadow clerk row so the history shows the real account name
+  let masterUsername: string;
+  if (!session.masterUserId) {
+    masterUsername = "root";
+  } else {
+    const [mu] = await db
+      .select({ username: masterUsers.username })
+      .from(masterUsers)
+      .where(eq(masterUsers.id, session.masterUserId))
+      .limit(1);
+    if (!mu) return { success: false, error: "Session user not found" };
+    masterUsername = mu.username;
+  }
+
+  const shadowUsername = `__m__${masterUsername}`;
+
+  const [existingShadow] = await db
+    .select({ id: cashierUsers.id })
+    .from(cashierUsers)
+    .where(and(eq(cashierUsers.cashierId, cashierId), eq(cashierUsers.username, shadowUsername)))
+    .limit(1);
+
+  let shadowClerkId: string;
+  if (existingShadow) {
+    shadowClerkId = existingShadow.id;
+  } else {
+    const [created] = await db
+      .insert(cashierUsers)
+      .values({
+        cashierId,
+        username: shadowUsername,
+        passwordHash: "!disabled",
+        role: "clerk",
+        firstName: masterUsername === "root" ? "ENV Root" : masterUsername,
+        lastName: null,
+        isActive: true,
+      })
+      .returning({ id: cashierUsers.id });
+    shadowClerkId = created.id;
+  }
+
   const isTerminal = TERMINAL_STATUSES.includes(newStatus as never);
 
   await db
@@ -106,7 +147,7 @@ export async function masterClerkUpdateTransactionStatusAction(
     .values({
       cashierId,
       transactionId,
-      updatedByUserId: null,
+      updatedByUserId: shadowClerkId,
       previousStatus: previousStatus as never,
       newStatus,
       noteToPlayer: noteToPlayer || null,

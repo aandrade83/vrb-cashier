@@ -12,6 +12,7 @@ import {
 import { eq } from "drizzle-orm";
 import { getMasterSessionFromCookies, getMasterSessionData } from "@/lib/master-auth";
 import { releasePoolLocks } from "@/data/names-pool";
+import { getPlayerCompletedDepositSummary, type PlayerDepositSummaryRow } from "@/data/queue";
 import { TERMINAL_STATUSES, NEXT_STATUSES_ADMIN, TX_STATUS_LABEL } from "@/lib/transaction-statuses";
 import { getAdminEmailsForCashier } from "@/data/master-users";
 import { getCashierById } from "@/data/cashiers";
@@ -83,6 +84,47 @@ export async function masterUpdateTransactionStatusAction(input: unknown): Promi
     return { success: false, error: `Cannot transition from ${tx.status} to ${newStatus}.` };
   }
 
+  // Resolve shadow admin row so the history shows the real account name
+  let masterUsername: string;
+  if (!session.masterUserId) {
+    masterUsername = "root";
+  } else {
+    const [mu] = await db
+      .select({ username: masterUsers.username })
+      .from(masterUsers)
+      .where(eq(masterUsers.id, session.masterUserId))
+      .limit(1);
+    if (!mu) return { success: false, error: "Session user not found" };
+    masterUsername = mu.username;
+  }
+
+  const shadowUsername = `__m__${masterUsername}`;
+
+  const [existingShadow] = await db
+    .select({ id: cashierUsers.id })
+    .from(cashierUsers)
+    .where(and(eq(cashierUsers.cashierId, cashierId), eq(cashierUsers.username, shadowUsername)))
+    .limit(1);
+
+  let shadowAdminId: string;
+  if (existingShadow) {
+    shadowAdminId = existingShadow.id;
+  } else {
+    const [created] = await db
+      .insert(cashierUsers)
+      .values({
+        cashierId,
+        username: shadowUsername,
+        passwordHash: "!disabled",
+        role: "admin",
+        firstName: masterUsername === "root" ? "ENV Root" : masterUsername,
+        lastName: null,
+        isActive: true,
+      })
+      .returning({ id: cashierUsers.id });
+    shadowAdminId = created.id;
+  }
+
   const isTerminal = TERMINAL_STATUSES.includes(newStatus as never);
   const wasUnassigned = previousStatus === "unassigned";
 
@@ -107,7 +149,7 @@ export async function masterUpdateTransactionStatusAction(input: unknown): Promi
     .values({
       cashierId,
       transactionId,
-      updatedByUserId: null,
+      updatedByUserId: shadowAdminId,
       previousStatus: previousStatus as never,
       newStatus,
       noteToPlayer: noteToPlayer || null,
@@ -290,4 +332,17 @@ export async function masterAdminTakeTransactionAction(input: {
   });
 
   return { success: true };
+}
+
+export async function getPlayerDepositSummaryAction(
+  playerId: string,
+  cashierId: string,
+): Promise<{ success: true; rows: PlayerDepositSummaryRow[] } | { success: false; error: string }> {
+  const token = await getMasterSessionFromCookies();
+  if (!token) return { success: false, error: "Unauthorized" };
+  const session = await getMasterSessionData(token);
+  if (!session) return { success: false, error: "Unauthorized" };
+
+  const rows = await getPlayerCompletedDepositSummary(playerId, cashierId);
+  return { success: true, rows };
 }
