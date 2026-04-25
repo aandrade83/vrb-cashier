@@ -7,8 +7,7 @@ const NAV_ITEMS = [
   { key: "reports", label: "Reports", href: "/master/clerk/reports" },
   { key: "users", label: "Users", href: "/master/users" },
   { key: "methods", label: "Methods", href: "/master/methods" },
-  { key: "names", label: "Names", href: "/master/names" },
-  { key: "addresses", label: "Addresses", href: "/master/addresses" },
+  { key: "name-lists", label: "Name Lists", href: "/master/name-lists" },
 ] as const;
 
 type NavKey = (typeof NAV_ITEMS)[number]["key"];

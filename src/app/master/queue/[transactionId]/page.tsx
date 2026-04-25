@@ -8,6 +8,7 @@ import { MasterTransactionView } from "./_components/MasterTransactionView";
 import { db } from "@/db";
 import { cashierUsers, masterUsers } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { getLockedNameForTransaction } from "@/data/name-lists";
 
 export default async function MasterTransactionDetailPage({
   params,
@@ -25,6 +26,8 @@ export default async function MasterTransactionDetailPage({
 
   const tx = await getMasterTransactionDetail(transactionId);
   if (!tx) redirect("/master/queue");
+
+  const lockedName = await getLockedNameForTransaction(transactionId);
 
   // Look up shadow admin row so the view can identify "assigned to me"
   let myClerkId: string | null = null;
@@ -52,7 +55,7 @@ export default async function MasterTransactionDetailPage({
       <MasterNav active="queue" />
       <main className="flex-1 p-6">
         <div className="max-w-5xl mx-auto">
-          <MasterTransactionView transaction={tx} myClerkId={myClerkId} />
+          <MasterTransactionView transaction={tx} myClerkId={myClerkId} lockedName={lockedName} />
         </div>
       </main>
     </div>

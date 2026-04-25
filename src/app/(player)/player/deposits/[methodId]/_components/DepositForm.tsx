@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { submitDepositAction } from "@/app/[slug]/[token]/player/deposits/actions";
+import { requestNameAction } from "@/app/[slug]/[token]/player/name-actions";
 import type { PaymentMethod, MethodField } from "@/db/schema";
 import { buildPath } from "@/lib/paths";
 
@@ -48,7 +49,7 @@ type FileConfig = {
   allowedExtensions?: string[];
 };
 
-const EXCLUDED_TYPES = ["label", "hidden_label", "name", "address"] as const;
+const EXCLUDED_TYPES = ["label", "hidden_label", "address"] as const;
 type ExcludedType = typeof EXCLUDED_TYPES[number];
 
 function isExcluded(fieldType: string): fieldType is ExcludedType {
@@ -82,6 +83,11 @@ export function DepositForm({ fields, basePath, previewMode = false, submitActio
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [nameSelections, setNameSelections] = useState<
+    Record<string, { nameId: string; value: string; blockingMode: "yes" | "no" } | null>
+  >({});
+  const [nameFetching, setNameFetching] = useState<Record<string, boolean>>({});
+  const [nameUnavailable, setNameUnavailable] = useState<Record<string, boolean>>({});
 
   // Pick and lock one random value per random_list field on mount
   const [randomSelections] = useState<Record<string, string>>(() => {
@@ -102,6 +108,29 @@ export function DepositForm({ fields, basePath, previewMode = false, submitActio
 
   function setValue(fieldId: string, value: string) {
     setFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    setErrors((prev) => ({ ...prev, [fieldId]: "" }));
+  }
+
+  async function handleGetName(fieldId: string, methodId: string) {
+    setNameFetching((prev) => ({ ...prev, [fieldId]: true }));
+    setErrors((prev) => ({ ...prev, [fieldId]: "" }));
+    const result = await requestNameAction(methodId);
+    setNameFetching((prev) => ({ ...prev, [fieldId]: false }));
+    if (!result.success) {
+      setErrors((prev) => ({ ...prev, [fieldId]: result.error }));
+      setNameUnavailable((prev) => ({ ...prev, [fieldId]: true }));
+      return;
+    }
+    setNameUnavailable((prev) => ({ ...prev, [fieldId]: false }));
+    setNameSelections((prev) => ({
+      ...prev,
+      [fieldId]: { nameId: result.nameId, value: result.value, blockingMode: result.blockingMode },
+    }));
+  }
+
+  function handleResetName(fieldId: string) {
+    setNameSelections((prev) => ({ ...prev, [fieldId]: null }));
+    setNameUnavailable((prev) => ({ ...prev, [fieldId]: false }));
     setErrors((prev) => ({ ...prev, [fieldId]: "" }));
   }
 
@@ -148,6 +177,12 @@ export function DepositForm({ fields, basePath, previewMode = false, submitActio
 
     for (const field of fields) {
       if (isExcluded(field.fieldType) || field.fieldType === "random_list") continue;
+      if (field.fieldType === "name") {
+        if (field.isRequired && !nameSelections[field.id]) {
+          newErrors[field.id] = "Please get a name before submitting.";
+        }
+        continue;
+      }
       const value = fieldValues[field.id] ?? "";
       const vr = field.validationRules as ValidationRules | null;
 
@@ -198,12 +233,24 @@ export function DepositForm({ fields, basePath, previewMode = false, submitActio
       methodId: fields[0]?.methodId ?? "",
       fieldValues: fields
         .filter((f) => !isExcluded(f.fieldType))
-        .map((f) => ({
-          methodFieldId: f.id,
-          fieldLabelSnapshot: f.label,
-          fieldTypeSnapshot: f.fieldType,
-          value: f.fieldType === "random_list" ? (randomSelections[f.id] ?? null) : (fieldValues[f.id] ?? null),
-        })),
+        .map((f) => {
+          if (f.fieldType === "name") {
+            const sel = nameSelections[f.id];
+            return {
+              methodFieldId: f.id,
+              fieldLabelSnapshot: f.label,
+              fieldTypeSnapshot: f.fieldType,
+              value: sel?.value ?? null,
+              nameId: sel?.nameId ?? null,
+            };
+          }
+          return {
+            methodFieldId: f.id,
+            fieldLabelSnapshot: f.label,
+            fieldTypeSnapshot: f.fieldType,
+            value: f.fieldType === "random_list" ? (randomSelections[f.id] ?? null) : (fieldValues[f.id] ?? null),
+          };
+        }),
       amount: amountValue,
       idempotencyKey: idempotencyKey.current,
       currency: "USD",
@@ -224,6 +271,10 @@ export function DepositForm({ fields, basePath, previewMode = false, submitActio
   }
 
   const anyUploading = Object.values(fileState).some((s) => s.uploading);
+  const anyNameUnavailable = Object.values(nameUnavailable).some(Boolean);
+  const anyRequiredNameMissing = fields
+    .filter((f) => f.fieldType === "name" && f.isRequired)
+    .some((f) => !nameSelections[f.id]);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -258,6 +309,39 @@ export function DepositForm({ fields, basePath, previewMode = false, submitActio
             </div>
           );
         }
+        if (field.fieldType === "name") {
+          const sel = nameSelections[field.id];
+          return (
+            <div key={field.id} className="space-y-2">
+              {!sel ? (
+                <Button
+                  type="button"
+                  onClick={() => handleGetName(field.id, field.methodId)}
+                  disabled={nameFetching[field.id] || previewMode}
+                  className="w-full sm:w-auto"
+                >
+                  {nameFetching[field.id] ? "Getting name…" : (field.placeholder ?? "Get Name")}
+                </Button>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-mono bg-muted rounded px-3 py-2 flex-1">{sel.value}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleResetName(field.id)}
+                  >
+                    Change
+                  </Button>
+                </div>
+              )}
+              {errors[field.id] && (
+                <p className="text-sm text-destructive">{errors[field.id]}</p>
+              )}
+            </div>
+          );
+        }
+
         if (isExcluded(field.fieldType)) return null;
 
         return (
@@ -436,7 +520,7 @@ export function DepositForm({ fields, basePath, previewMode = false, submitActio
         <p className="text-sm text-destructive">{serverError}</p>
       )}
 
-      <Button type="submit" disabled={submitting || anyUploading || previewMode} className="w-full sm:w-auto">
+      <Button type="submit" disabled={submitting || anyUploading || previewMode || anyRequiredNameMissing || anyNameUnavailable} className="w-full sm:w-auto">
         {submitting ? "Submitting…" : "Submit Deposit Request"}
       </Button>
     </form>

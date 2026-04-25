@@ -28,14 +28,16 @@ import type { MasterTransactionDetail } from "@/data/queue";
 import {
   masterUpdateTransactionStatusAction,
   masterAdminTakeTransactionAction,
+  releaseNameManuallyAction,
 } from "@/app/master/queue/actions";
 
 interface Props {
   transaction: MasterTransactionDetail;
   myClerkId: string | null;
+  lockedName: { id: string; value: string } | null;
 }
 
-export function MasterTransactionView({ transaction: tx, myClerkId }: Props) {
+export function MasterTransactionView({ transaction: tx, myClerkId, lockedName }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [newStatus, setNewStatus] = useState("");
@@ -47,6 +49,9 @@ export function MasterTransactionView({ transaction: tx, myClerkId }: Props) {
   const [takePending, setTakePending] = useState(false);
   const [takeError, setTakeError] = useState<string | null>(null);
   const [showTakeoverConfirm, setShowTakeoverConfirm] = useState(false);
+
+  const [releasePending, setReleasePending] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
 
   const statusLabel = TX_STATUS_LABEL[tx.status as keyof typeof TX_STATUS_LABEL] ?? tx.status;
   const statusVariant =
@@ -74,6 +79,18 @@ export function MasterTransactionView({ transaction: tx, myClerkId }: Props) {
       router.refresh();
     } else {
       setTakeError(result.error);
+    }
+  }
+
+  async function handleReleaseName() {
+    setReleaseError(null);
+    setReleasePending(true);
+    const result = await releaseNameManuallyAction(tx.id);
+    setReleasePending(false);
+    if (result.success) {
+      router.refresh();
+    } else {
+      setReleaseError(result.error);
     }
   }
 
@@ -366,6 +383,24 @@ export function MasterTransactionView({ transaction: tx, myClerkId }: Props) {
                       {takePending ? "Taking…" : "Confirm"}
                     </Button>
                   </div>
+                </div>
+              )}
+
+              {lockedName && (
+                <div className="space-y-1 pt-1 border-t">
+                  <p className="text-xs text-muted-foreground">
+                    Locked name: <span className="font-mono font-medium text-foreground">{lockedName.value}</span>
+                  </p>
+                  {releaseError && <p className="text-xs text-destructive">{releaseError}</p>}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleReleaseName}
+                    disabled={releasePending}
+                  >
+                    {releasePending ? "Releasing…" : "Release Name"}
+                  </Button>
                 </div>
               )}
             </CardContent>

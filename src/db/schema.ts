@@ -652,61 +652,84 @@ export const notifications = pgTable(
 
 // =============================================================================
 // RANDOM NAMES
-// Pool of names assigned to transactions for anonymization per cashier.
-// Lowest priority number = highest priority for assignment.
+// =============================================================================
+// NAME LISTS
+// Method-scoped, multi-cashier-shared name pools.
+// Each list belongs to one method and can cover one or many cashiers.
+// The DB enforces that a cashier+method pair belongs to at most one list.
 // =============================================================================
 
-export const names = pgTable(
-  "names",
+export const nameLists = pgTable(
+  "name_lists",
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
-    cashierId: uuid("cashier_id")
+    methodId: uuid("method_id")
       .notNull()
-      .references(() => cashiers.id),
+      .references(() => paymentMethods.id, { onDelete: "cascade" }),
 
-    value: text("value").notNull(),
-    priority: integer("priority").notNull().default(0),
-    isActive: boolean("is_active").notNull().default(true),
+    // 'yes' = lock name until preconfirmed/denied/cancelled
+    // 'no'  = free rotation by priority + last_used_at; no lock
+    blockingMode: text("blocking_mode").$type<"yes" | "no">().notNull().default("yes"),
 
-    // Lock system: prevents concurrent assignment of the same name
-    isLocked: boolean("is_locked").notNull().default(false),
-    lockedAt: timestamp("locked_at", { withTimezone: true }),
-    lockedByTransactionId: uuid("locked_by_transaction_id").references(
-      () => transactions.id,
-      { onDelete: "set null" },
-    ),
-
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("names_cashier_id_idx").on(table.cashierId),
-    index("names_priority_idx").on(table.cashierId, table.priority),
-    index("names_locked_idx").on(table.isLocked),
+    index("name_lists_method_id_idx").on(table.methodId),
   ],
 );
 
-// =============================================================================
-// RANDOM ADDRESSES
-// Pool of addresses assigned to transactions per cashier.
-// Same lock logic as names.
-// =============================================================================
-
-export const addresses = pgTable(
-  "addresses",
+// Junction: which cashiers a name list covers.
+// method_id is denormalized here to allow a DB-level unique constraint
+// enforcing "only one list per method+cashier" without a JOIN.
+export const nameListCashiers = pgTable(
+  "name_list_cashiers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
 
+    nameListId: uuid("name_list_id")
+      .notNull()
+      .references(() => nameLists.id, { onDelete: "cascade" }),
+
     cashierId: uuid("cashier_id")
       .notNull()
-      .references(() => cashiers.id),
+      .references(() => cashiers.id, { onDelete: "cascade" }),
 
-    value: text("value").notNull(),
-    priority: integer("priority").notNull().default(0),
+    // Denormalized from name_lists.method_id — required for the uniqueness constraint below
+    methodId: uuid("method_id")
+      .notNull()
+      .references(() => paymentMethods.id, { onDelete: "cascade" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Core business rule: one list per method+cashier
+    uniqueIndex("name_list_cashiers_method_cashier_idx").on(table.methodId, table.cashierId),
+    index("name_list_cashiers_list_id_idx").on(table.nameListId),
+    index("name_list_cashiers_cashier_id_idx").on(table.cashierId),
+  ],
+);
+
+// Individual names within a list.
+// value_normalized = trim().toLowerCase() stored for duplicate detection.
+export const nameListNames = pgTable(
+  "name_list_names",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+
+    nameListId: uuid("name_list_id")
+      .notNull()
+      .references(() => nameLists.id, { onDelete: "cascade" }),
+
+    value: text("value").notNull(),                  // display value (original casing)
+    valueNormalized: text("value_normalized").notNull(), // trim().toLowerCase() — duplicate check
+
+    priority: integer("priority").notNull().default(1), // 1 = highest priority
+
     isActive: boolean("is_active").notNull().default(true),
 
+    // Lock fields — used when blocking_mode = 'yes'
     isLocked: boolean("is_locked").notNull().default(false),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
     lockedByTransactionId: uuid("locked_by_transaction_id").references(
@@ -714,14 +737,18 @@ export const addresses = pgTable(
       { onDelete: "set null" },
     ),
 
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    // Rotation tracking — used when blocking_mode = 'no'
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    lastUsedReference: text("last_used_reference"), // reference code snapshot
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("addresses_cashier_id_idx").on(table.cashierId),
-    index("addresses_priority_idx").on(table.cashierId, table.priority),
-    index("addresses_locked_idx").on(table.isLocked),
+    // Prevent duplicate names within the same list (case-insensitive, trimmed)
+    uniqueIndex("name_list_names_list_value_idx").on(table.nameListId, table.valueNormalized),
+    index("name_list_names_list_id_idx").on(table.nameListId, table.isActive, table.isLocked, table.priority),
+    index("name_list_names_locked_by_idx").on(table.lockedByTransactionId),
   ],
 );
 
@@ -904,8 +931,6 @@ export const cashiersRelations = relations(cashiers, ({ many }) => ({
   transactionAttachments: many(transactionAttachments),
   auditLogs: many(auditLogs),
   notifications: many(notifications),
-  names: many(names),
-  addresses: many(addresses),
 }));
 
 export const cashierUsersRelations = relations(
@@ -1081,24 +1106,38 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   }),
 }));
 
-export const namesRelations = relations(names, ({ one }) => ({
+
+export const nameListsRelations = relations(nameLists, ({ one, many }) => ({
+  method: one(paymentMethods, {
+    fields: [nameLists.methodId],
+    references: [paymentMethods.id],
+  }),
+  cashiers: many(nameListCashiers),
+  names: many(nameListNames),
+}));
+
+export const nameListCashiersRelations = relations(nameListCashiers, ({ one }) => ({
+  nameList: one(nameLists, {
+    fields: [nameListCashiers.nameListId],
+    references: [nameLists.id],
+  }),
   cashier: one(cashiers, {
-    fields: [names.cashierId],
+    fields: [nameListCashiers.cashierId],
     references: [cashiers.id],
   }),
-  lockedByTransaction: one(transactions, {
-    fields: [names.lockedByTransactionId],
-    references: [transactions.id],
+  method: one(paymentMethods, {
+    fields: [nameListCashiers.methodId],
+    references: [paymentMethods.id],
   }),
 }));
 
-export const addressesRelations = relations(addresses, ({ one }) => ({
-  cashier: one(cashiers, {
-    fields: [addresses.cashierId],
-    references: [cashiers.id],
+export const nameListNamesRelations = relations(nameListNames, ({ one }) => ({
+  nameList: one(nameLists, {
+    fields: [nameListNames.nameListId],
+    references: [nameLists.id],
   }),
   lockedByTransaction: one(transactions, {
-    fields: [addresses.lockedByTransactionId],
+    fields: [nameListNames.lockedByTransactionId],
     references: [transactions.id],
   }),
 }));
@@ -1149,11 +1188,15 @@ export type NewAuditLog = typeof auditLogs.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
 
-export type Name = typeof names.$inferSelect;
-export type NewName = typeof names.$inferInsert;
 
-export type Address = typeof addresses.$inferSelect;
-export type NewAddress = typeof addresses.$inferInsert;
+export type NameList = typeof nameLists.$inferSelect;
+export type NewNameList = typeof nameLists.$inferInsert;
+
+export type NameListCashier = typeof nameListCashiers.$inferSelect;
+export type NewNameListCashier = typeof nameListCashiers.$inferInsert;
+
+export type NameListName = typeof nameListNames.$inferSelect;
+export type NewNameListName = typeof nameListNames.$inferInsert;
 
 export type MasterSession = typeof masterSessions.$inferSelect;
 export type NewMasterSession = typeof masterSessions.$inferInsert;

@@ -227,6 +227,12 @@ export function MethodDepositPreview({ method }: Props) {
                     })()}
                   </div>
                 )}
+
+                {field.fieldType === "name" && (
+                  <Button type="button" variant="outline" disabled className="w-full sm:w-auto">
+                    {field.placeholder ?? "Get Name"}
+                  </Button>
+                )}
               </>
             )}
           </div>

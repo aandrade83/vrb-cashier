@@ -67,7 +67,9 @@ const FIELD_TYPE_LABELS: Record<FieldType, string> = {
 
 const NO_INPUT_TYPES: FieldType[] = ["label", "hidden_label", "random_list", "name", "address"];
 const SYSTEM_ONLY_TYPES: FieldType[] = ["name", "address"];
-const COMING_SOON_TYPES: FieldType[] = ["name", "address"];
+const COMING_SOON_TYPES: FieldType[] = ["address"];
+// "name" is enabled in edit only when a name list already exists for the method
+const REQUIRES_LIST_TYPES: FieldType[] = ["name"];
 
 const EXTENSION_OPTIONS = ["jpg", "jpeg", "png", "pdf", "webp", "gif"];
 
@@ -112,6 +114,7 @@ function FieldEditor({
   onCancel,
   commitLabel,
   fieldId,
+  hasNameList,
 }: {
   draftField: FieldDef;
   setDraftField: React.Dispatch<React.SetStateAction<FieldDef>>;
@@ -123,6 +126,7 @@ function FieldEditor({
   onCancel: () => void;
   commitLabel: string;
   fieldId?: string;
+  hasNameList: boolean;
 }) {
   const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
   const isNoInput = NO_INPUT_TYPES.includes(draftField.fieldType);
@@ -155,15 +159,32 @@ function FieldEditor({
     <div className="rounded border p-4 space-y-3 bg-muted/30">
       {/* System fields info box */}
       {isSystem ? (
-        <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-3 space-y-1">
-          <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-            {FIELD_TYPE_LABELS[draftField.fieldType]} field
-          </p>
-          <p className="text-xs text-blue-700 dark:text-blue-400">
-            {draftField.fieldType === "name"
-              ? "When a player opens this method, the system will automatically assign and display the next available name from the Names pool. The name is locked to this session and released if the player leaves without submitting."
-              : "When a player opens this method, the system will automatically assign and display the next available address from the Addresses pool. The address is locked to this session and released if the player leaves without submitting."}
-          </p>
+        <div className="space-y-3">
+          <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-3 space-y-1">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+              {FIELD_TYPE_LABELS[draftField.fieldType]} field
+            </p>
+            <p className="text-xs text-blue-700 dark:text-blue-400">
+              {draftField.fieldType === "name"
+                ? "The player clicks a button to receive their assigned name from the Name List configured for this method. A Name List must be set up in the Name Lists section."
+                : "When a player opens this method, the system will automatically assign and display the next available address from the Addresses pool."}
+            </p>
+          </div>
+          {draftField.fieldType === "name" && (
+            <div className="space-y-1">
+              <Label>Button Text *</Label>
+              <Input
+                value={draftField.placeholder}
+                onChange={(e) =>
+                  setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))
+                }
+                placeholder='e.g. "Press to get a name"'
+              />
+              <p className="text-xs text-muted-foreground">
+                Text shown on the button the player clicks to receive their name.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <div className={`grid gap-3 ${draftField.fieldType === "label" ? "grid-cols-1" : "grid-cols-2"}`}>
@@ -228,11 +249,21 @@ function FieldEditor({
           >
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {(Object.entries(FIELD_TYPE_LABELS) as [FieldType, string][]).map(([val, lbl]) => (
-                <SelectItem key={val} value={val} disabled={COMING_SOON_TYPES.includes(val)}>
-                  {COMING_SOON_TYPES.includes(val) ? `${lbl} (coming soon)` : lbl}
-                </SelectItem>
-              ))}
+              {(Object.entries(FIELD_TYPE_LABELS) as [FieldType, string][]).map(([val, lbl]) => {
+                const isComingSoon = COMING_SOON_TYPES.includes(val);
+                const requiresList = REQUIRES_LIST_TYPES.includes(val) && !hasNameList;
+                const isDisabled = isComingSoon || requiresList;
+                const label = isComingSoon
+                  ? `${lbl} (coming soon)`
+                  : requiresList
+                  ? `${lbl} (create list first)`
+                  : lbl;
+                return (
+                  <SelectItem key={val} value={val} disabled={isDisabled}>
+                    {label}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -364,10 +395,12 @@ export function EditMethodForm({
   method,
   successRedirect,
   updateAction,
+  hasNameList = false,
 }: {
   method: MethodWithFields;
   successRedirect?: string;
   updateAction?: (id: string, data: unknown) => Promise<ActionResult>;
+  hasNameList?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -421,6 +454,7 @@ export function EditMethodForm({
   function commitAddField() {
     const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
     if (!isSystem && !draftField.label.trim()) return;
+    if (draftField.fieldType === "name" && !draftField.placeholder.trim()) return;
     const label = isSystem ? FIELD_TYPE_LABELS[draftField.fieldType] : draftField.label;
     setFields((prev) => [...prev, { ...draftField, label, displayOrder: prev.length }]);
     setAddingField(false);
@@ -429,6 +463,7 @@ export function EditMethodForm({
   function commitEditField() {
     const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
     if (!isSystem && !draftField.label.trim()) return;
+    if (draftField.fieldType === "name" && !draftField.placeholder.trim()) return;
     const label = isSystem ? FIELD_TYPE_LABELS[draftField.fieldType] : draftField.label;
     setFields((prev) =>
       prev.map((f) => (f.id === editingFieldId ? { ...draftField, label, displayOrder: f.displayOrder } : f))
@@ -543,6 +578,7 @@ export function EditMethodForm({
                       onCancel={() => { setAddingField(false); setEditingFieldId(null); }}
                       commitLabel="Save Changes"
                       fieldId={field.id}
+                      hasNameList={hasNameList}
                     />
                   );
                 }
@@ -582,6 +618,7 @@ export function EditMethodForm({
               onCommit={commitAddField}
               onCancel={() => { setAddingField(false); setEditingFieldId(null); }}
               commitLabel="Add Field"
+              hasNameList={hasNameList}
             />
           ) : !editingFieldId && (
             <Button type="button" variant="outline" onClick={startAddField}>+ Add Field</Button>

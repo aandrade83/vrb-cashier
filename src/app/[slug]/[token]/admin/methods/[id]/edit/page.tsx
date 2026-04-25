@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getMethodWithFields } from "@/data/methods";
 import { getCashierId } from "@/lib/cashier-context";
 import { EditMethodForm } from "@/app/(admin)/admin/methods/[id]/edit/edit-method-form";
+import { hasNameListForMethod } from "@/data/name-lists";
 
 export default async function CashierEditMethodPage({
   params,
@@ -17,12 +18,15 @@ export default async function CashierEditMethodPage({
     redirect(`${base}/methods`);
   }
 
-  const successRedirect = `${base}/methods?type=${method.type}`;
+  const [successRedirect, hasList] = [
+    `${base}/methods?type=${method.type}`,
+    await hasNameListForMethod(id),
+  ];
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Edit Method</h1>
-      <EditMethodForm method={method} successRedirect={successRedirect} />
+      <EditMethodForm method={method} successRedirect={successRedirect} hasNameList={hasList} />
     </div>
   );
 }

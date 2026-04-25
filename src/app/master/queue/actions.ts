@@ -11,7 +11,7 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getMasterSessionFromCookies, getMasterSessionData } from "@/lib/master-auth";
-import { releasePoolLocks } from "@/data/names-pool";
+import { releaseNameForTransaction } from "@/data/name-lists";
 import { getPlayerCompletedDepositSummary, type PlayerDepositSummaryRow } from "@/data/queue";
 import { TERMINAL_STATUSES, NEXT_STATUSES_ADMIN, TX_STATUS_LABEL } from "@/lib/transaction-statuses";
 import { getAdminEmailsForCashier } from "@/data/master-users";
@@ -184,7 +184,9 @@ export async function masterUpdateTransactionStatusAction(input: unknown): Promi
     },
   });
 
-  if (isTerminal) await releasePoolLocks(transactionId);
+  if (["preconfirmed", "denied", "cancelled"].includes(newStatus)) {
+    await releaseNameForTransaction(transactionId);
+  }
 
   // Fire-and-forget status update emails to player + admins
   void (async () => {
@@ -329,6 +331,83 @@ export async function masterAdminTakeTransactionAction(input: {
       shadowUsername,
       source: "master_admin_take",
     },
+  });
+
+  return { success: true };
+}
+
+export async function releaseNameManuallyAction(
+  transactionId: string,
+): Promise<ActionResult> {
+  const token = await getMasterSessionFromCookies();
+  if (!token) return { success: false, error: "Unauthorized" };
+
+  const session = await getMasterSessionData(token);
+  if (!session || session.role !== "master_admin") return { success: false, error: "Unauthorized" };
+
+  const parsed = z.string().uuid().safeParse(transactionId);
+  if (!parsed.success) return { success: false, error: "Invalid transaction ID" };
+
+  const [tx] = await db
+    .select({ cashierId: transactions.cashierId, status: transactions.status })
+    .from(transactions)
+    .where(eq(transactions.id, transactionId))
+    .limit(1);
+
+  if (!tx) return { success: false, error: "Transaction not found" };
+
+  let masterUsername: string;
+  if (!session.masterUserId) {
+    masterUsername = "root";
+  } else {
+    const [mu] = await db
+      .select({ username: masterUsers.username })
+      .from(masterUsers)
+      .where(eq(masterUsers.id, session.masterUserId))
+      .limit(1);
+    if (!mu) return { success: false, error: "Session user not found" };
+    masterUsername = mu.username;
+  }
+
+  const shadowUsername = `__m__${masterUsername}`;
+  const cashierId = tx.cashierId;
+
+  const [existingShadow] = await db
+    .select({ id: cashierUsers.id })
+    .from(cashierUsers)
+    .where(and(eq(cashierUsers.cashierId, cashierId), eq(cashierUsers.username, shadowUsername)))
+    .limit(1);
+
+  let shadowAdminId: string;
+  if (existingShadow) {
+    shadowAdminId = existingShadow.id;
+  } else {
+    const [created] = await db
+      .insert(cashierUsers)
+      .values({
+        cashierId,
+        username: shadowUsername,
+        passwordHash: "!disabled",
+        role: "admin",
+        firstName: masterUsername === "root" ? "ENV Root" : masterUsername,
+        lastName: null,
+        isActive: true,
+      })
+      .returning({ id: cashierUsers.id });
+    shadowAdminId = created.id;
+  }
+
+  await releaseNameForTransaction(transactionId);
+
+  await db.insert(transactionUpdates).values({
+    cashierId,
+    transactionId,
+    updatedByUserId: shadowAdminId,
+    previousStatus: tx.status as never,
+    newStatus: tx.status as never,
+    noteToPlayer: null,
+    internalNote: `Name released manually by ${masterUsername}`,
+    emailSentToPlayer: false,
   });
 
   return { success: true };

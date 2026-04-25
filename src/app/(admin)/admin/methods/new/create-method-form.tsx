@@ -67,8 +67,9 @@ const FIELD_TYPE_LABELS: Record<FieldType, string> = {
 const NO_INPUT_TYPES: FieldType[] = ["label", "hidden_label", "random_list", "name", "address"];
 // Types where admin doesn't set a label — system uses the type name
 const SYSTEM_ONLY_TYPES: FieldType[] = ["name", "address"];
-// Types not yet implemented in player flows — selectable but disabled in the UI
-const COMING_SOON_TYPES: FieldType[] = ["name", "address"];
+// Types disabled in the create flow (name requires an existing method + list)
+const COMING_SOON_TYPES: FieldType[] = ["address"];
+const REQUIRES_LIST_TYPES: FieldType[] = ["name"];
 
 const EXTENSION_OPTIONS = ["jpg", "jpeg", "png", "pdf", "webp", "gif"];
 
@@ -151,6 +152,10 @@ export function CreateMethodForm({
     const isSystem = SYSTEM_ONLY_TYPES.includes(draftField.fieldType);
     if (!isSystem && !draftField.label.trim()) {
       setFieldError("Label is required");
+      return;
+    }
+    if (draftField.fieldType === "name" && !draftField.placeholder.trim()) {
+      setFieldError("Button text is required for Name fields.");
       return;
     }
     const label = isSystem ? FIELD_TYPE_LABELS[draftField.fieldType] : draftField.label;
@@ -372,17 +377,34 @@ export function CreateMethodForm({
           {addingField ? (
             <div className="rounded border p-4 space-y-3 bg-muted/30">
 
-              {/* System fields: name / address — no config needed */}
+              {/* System fields: name / address */}
               {isSystem ? (
-                <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-3 space-y-1">
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                    {FIELD_TYPE_LABELS[draftField.fieldType]} field
-                  </p>
-                  <p className="text-xs text-blue-700 dark:text-blue-400">
-                    {draftField.fieldType === "name"
-                      ? "When a player opens this method, the system will automatically assign and display the next available name from the Names pool. The name is locked to this session and released if the player leaves without submitting."
-                      : "When a player opens this method, the system will automatically assign and display the next available address from the Addresses pool. The address is locked to this session and released if the player leaves without submitting."}
-                  </p>
+                <div className="space-y-3">
+                  <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-3 space-y-1">
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                      {FIELD_TYPE_LABELS[draftField.fieldType]} field
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-400">
+                      {draftField.fieldType === "name"
+                        ? "The player clicks a button to receive their assigned name from the Name List configured for this method. A Name List must be set up in the Name Lists section."
+                        : "When a player opens this method, the system will automatically assign and display the next available address from the Addresses pool."}
+                    </p>
+                  </div>
+                  {draftField.fieldType === "name" && (
+                    <div className="space-y-1">
+                      <Label>Button Text *</Label>
+                      <Input
+                        value={draftField.placeholder}
+                        onChange={(e) =>
+                          setDraftField((prev) => ({ ...prev, placeholder: e.target.value }))
+                        }
+                        placeholder='e.g. "Press to get a name"'
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Text shown on the button the player clicks to receive their name.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* Normal fields: label + placeholder row */
@@ -461,11 +483,21 @@ export function CreateMethodForm({
                     </SelectTrigger>
                     <SelectContent>
                       {(Object.entries(FIELD_TYPE_LABELS) as [FieldType, string][]).map(
-                        ([val, lbl]) => (
-                          <SelectItem key={val} value={val} disabled={COMING_SOON_TYPES.includes(val)}>
-                            {COMING_SOON_TYPES.includes(val) ? `${lbl} (coming soon)` : lbl}
-                          </SelectItem>
-                        )
+                        ([val, lbl]) => {
+                          const isComingSoon = COMING_SOON_TYPES.includes(val);
+                          const requiresList = REQUIRES_LIST_TYPES.includes(val);
+                          const isDisabled = isComingSoon || requiresList;
+                          const label = isComingSoon
+                            ? `${lbl} (coming soon)`
+                            : requiresList
+                            ? `${lbl} (create list first)`
+                            : lbl;
+                          return (
+                            <SelectItem key={val} value={val} disabled={isDisabled}>
+                              {label}
+                            </SelectItem>
+                          );
+                        }
                       )}
                     </SelectContent>
                   </Select>

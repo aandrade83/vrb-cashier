@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { db } from "@/db";
 import { transactions, transactionFieldValues, transactionAttachments, auditLogs } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   findTransactionByIdempotencyKey,
   getNextTransactionSequence,
@@ -12,7 +13,12 @@ import { getMethodWithFields } from "@/data/methods";
 import { getUserSession, getMasterSession } from "@/lib/auth/session";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 import { getOrCreateShadowPlayer } from "@/lib/master-actor";
-import { assignName, assignAddress } from "@/data/names-pool";
+import {
+  getNameListForCashier,
+  lockNameForTransaction,
+  lockNextAvailableForTransaction,
+  commitRotation,
+} from "@/data/name-lists";
 import { getUserById } from "@/data/users";
 import { getClerkEmailsForCashier } from "@/data/master-users";
 import { getCashierById } from "@/data/cashiers";
@@ -29,6 +35,7 @@ const fieldValueSchema = z.object({
     "amount_list", "hyperlink", "name", "address",
   ]),
   value: z.string().nullable(),
+  nameId: z.string().uuid().nullable().optional(),
 });
 
 const submitPayoutSchema = z.object({
@@ -139,9 +146,13 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
     return { success: false, error: "Failed to create transaction. Please try again." };
   }
 
-  if (fieldValues.length > 0) {
+  // Separate name fields (handled via new Name List system) from others
+  const regularFieldValues = fieldValues.filter((fv) => fv.fieldTypeSnapshot !== "name");
+  const nameFieldValues = fieldValues.filter((fv) => fv.fieldTypeSnapshot === "name");
+
+  if (regularFieldValues.length > 0) {
     await db.insert(transactionFieldValues).values(
-      fieldValues.map((fv) => ({
+      regularFieldValues.map((fv) => ({
         cashierId,
         transactionId: transaction.id,
         methodFieldId: fv.methodFieldId,
@@ -152,33 +163,46 @@ export async function submitPayoutAction(data: unknown): Promise<ActionResult> {
     );
   }
 
-  // Auto-assign name/address pool entries for fields of those types
-  const autoFields = method.fields.filter(
-    (f) => f.fieldType === "name" || f.fieldType === "address",
-  );
-  if (autoFields.length > 0) {
-    const autoValues = (
-      await Promise.all(
-        autoFields.map(async (f) => {
-          const assigned =
-            f.fieldType === "name"
-              ? await assignName(cashierId, transaction.id)
-              : await assignAddress(cashierId, transaction.id);
-          if (!assigned) return null;
-          return {
-            cashierId,
-            transactionId: transaction.id,
-            methodFieldId: f.id,
-            fieldLabelSnapshot: f.label,
-            fieldTypeSnapshot: f.fieldType as "name" | "address",
-            value: assigned,
-          };
-        }),
-      )
-    ).filter((v): v is NonNullable<typeof v> => v !== null);
-    if (autoValues.length > 0) {
-      await db.insert(transactionFieldValues).values(autoValues);
+  // Handle name fields: use Name List system if configured, else fall back to old pool
+  const nameList = nameFieldValues.length > 0
+    ? await getNameListForCashier(methodId, cashierId)
+    : null;
+
+  const nameValuesToInsert: {
+    cashierId: string; transactionId: string; methodFieldId: string;
+    fieldLabelSnapshot: string; fieldTypeSnapshot: "name"; value: string | null;
+  }[] = [];
+
+  for (const fv of nameFieldValues) {
+    if (nameList && fv.nameId) {
+      let finalValue: string | null = null;
+      if (nameList.blockingMode === "yes") {
+        const locked = await lockNameForTransaction(fv.nameId, transaction.id, referenceCode);
+        if (locked) {
+          finalValue = locked.value;
+        } else {
+          const fallback = await lockNextAvailableForTransaction(methodId, cashierId, transaction.id, referenceCode);
+          if (fallback) {
+            finalValue = fallback.value;
+          } else {
+            await db.delete(transactions).where(eq(transactions.id, transaction.id));
+            return { success: false, error: "No names available at this time. Please try again later." };
+          }
+        }
+      } else {
+        const committed = await commitRotation(methodId, cashierId, fv.nameId, referenceCode);
+        finalValue = committed?.value ?? fv.value ?? null;
+      }
+      nameValuesToInsert.push({
+        cashierId, transactionId: transaction.id,
+        methodFieldId: fv.methodFieldId, fieldLabelSnapshot: fv.fieldLabelSnapshot,
+        fieldTypeSnapshot: "name", value: finalValue,
+      });
     }
+  }
+
+  if (nameValuesToInsert.length > 0) {
+    await db.insert(transactionFieldValues).values(nameValuesToInsert);
   }
 
   const attachmentFields = fieldValues.filter(
