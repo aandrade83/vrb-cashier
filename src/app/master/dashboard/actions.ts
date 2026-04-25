@@ -18,8 +18,6 @@ import {
   notifications,
   auditLogs,
   loginAttempts,
-  names,
-  addresses,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -159,9 +157,6 @@ export async function resetCashierDataAction(data: {
   await db.delete(notifications).where(eq(notifications.cashierId, cashierId));
   await db.delete(auditLogs).where(eq(auditLogs.cashierId, cashierId));
   await db.delete(transactions).where(eq(transactions.cashierId, cashierId));
-  // Unlock pool entries (lockedByTransactionId is null after cascade, but isLocked stays true)
-  await db.update(names).set({ isLocked: false, lockedAt: null }).where(eq(names.cashierId, cashierId));
-  await db.update(addresses).set({ isLocked: false, lockedAt: null }).where(eq(addresses.cashierId, cashierId));
   await db.delete(loginAttempts).where(eq(loginAttempts.cashierId, cashierId));
   await db.delete(cashierUsers).where(eq(cashierUsers.cashierId, cashierId));
 

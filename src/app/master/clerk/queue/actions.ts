@@ -6,7 +6,7 @@ import { transactions, transactionUpdates, notifications, auditLogs, cashierUser
 import { and, eq } from "drizzle-orm";
 import { getMasterSessionFromCookies, getMasterSessionData } from "@/lib/master-auth";
 import { getUserCashierPermissions } from "@/data/master-users";
-import { releasePoolLocks } from "@/data/names-pool";
+import { releaseNameForTransaction } from "@/data/name-lists";
 import { TERMINAL_STATUSES, NEXT_STATUSES_CLERK, TX_STATUS_LABEL } from "@/lib/transaction-statuses";
 import { getAdminEmailsForCashier } from "@/data/master-users";
 import { getCashierById } from "@/data/cashiers";
@@ -182,7 +182,9 @@ export async function masterClerkUpdateTransactionStatusAction(
     },
   });
 
-  if (isTerminal) await releasePoolLocks(transactionId);
+  if (["preconfirmed", "denied", "cancelled"].includes(newStatus)) {
+    await releaseNameForTransaction(transactionId);
+  }
 
   // Fire-and-forget status update emails to player + admins
   void (async () => {

@@ -4,6 +4,7 @@ import { MasterNav } from "@/components/master-nav";
 import { getGlobalMethodById } from "@/data/methods";
 import { EditMethodForm } from "@/app/(admin)/admin/methods/[id]/edit/edit-method-form";
 import { updateGlobalMethodAction } from "../../actions";
+import { hasNameListForMethod } from "@/data/name-lists";
 
 export default async function EditGlobalMethodPage({
   params,
@@ -14,7 +15,10 @@ export default async function EditGlobalMethodPage({
   if (!authenticated) redirect("/master/login");
 
   const { id } = await params;
-  const method = await getGlobalMethodById(id);
+  const [method, hasList] = await Promise.all([
+    getGlobalMethodById(id),
+    hasNameListForMethod(id),
+  ]);
   if (!method) notFound();
 
   return (
@@ -27,6 +31,7 @@ export default async function EditGlobalMethodPage({
             method={method}
             updateAction={updateGlobalMethodAction}
             successRedirect="/master/methods"
+            hasNameList={hasList}
           />
         </div>
       </main>

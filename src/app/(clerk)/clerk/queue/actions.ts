@@ -15,7 +15,6 @@ import { getClerkById } from "@/data/queue";
 import { getCashierId } from "@/lib/cashier-context";
 import { getUserSession, getMasterSession } from "@/lib/auth/session";
 import { getOrCreateCashierActor, type CashierActor } from "@/lib/master-actor";
-import { releasePoolLocks } from "@/data/names-pool";
 import { TERMINAL_STATUSES } from "@/lib/transaction-statuses";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -341,10 +340,6 @@ export async function updateTransactionStatusAction(input: unknown): Promise<Act
       changed_by_role: actor.masterRole ?? actor.role,
     },
   });
-
-  if (isTerminal) {
-    await releasePoolLocks(transactionId);
-  }
 
   revalidatePath("/clerk/queue");
   return { success: true };
