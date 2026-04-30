@@ -853,6 +853,37 @@ export const userSessions = pgTable(
 );
 
 // =============================================================================
+// EXTERNAL LOGIN TOKENS
+// One-time tokens issued by /api/auth/external-login for trusted partners.
+// The external site already validated credentials — we skip sportsbook here.
+// The browser redeems the token at /[slug]/[token]/auto-login to get a session.
+// =============================================================================
+
+export const externalLoginTokens = pgTable(
+  "external_login_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    token: text("token").notNull().unique(),
+    cashierId: uuid("cashier_id")
+      .notNull()
+      .references(() => cashiers.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => cashierUsers.id, { onDelete: "cascade" }),
+    used: boolean("used").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ext_login_tokens_token_idx").on(table.token),
+    index("ext_login_tokens_cashier_idx").on(table.cashierId),
+    index("ext_login_tokens_expires_idx").on(table.expiresAt),
+  ],
+);
+
+// =============================================================================
 // LOGIN ATTEMPTS
 // Audit log + rate limiting source for all login events.
 // =============================================================================
@@ -1200,3 +1231,6 @@ export type NewNameListName = typeof nameListNames.$inferInsert;
 
 export type MasterSession = typeof masterSessions.$inferSelect;
 export type NewMasterSession = typeof masterSessions.$inferInsert;
+
+export type ExternalLoginToken = typeof externalLoginTokens.$inferSelect;
+export type NewExternalLoginToken = typeof externalLoginTokens.$inferInsert;
