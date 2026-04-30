@@ -34,8 +34,8 @@ export async function createUserSession(
   const cookieStore = await cookies();
   cookieStore.set(USER_SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: true,      // Required unconditionally when sameSite is "none"
+    sameSite: "none",  // Allows cookie in cross-origin iframe contexts
     path: "/",
     expires: expiresAt,
   });
