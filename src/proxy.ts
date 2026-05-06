@@ -11,7 +11,7 @@
 //   /cashier-inactive, /         → Public
 // =============================================================================
 
-export const runtime = "nodejs";
+//export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { Pool } from "pg";
@@ -20,7 +20,10 @@ import {
   CASHIER_SLUG_HEADER,
   CASHIER_TOKEN_HEADER,
 } from "@/lib/cashier-context";
-import { USER_SESSION_COOKIE, MASTER_SESSION_COOKIE } from "@/lib/auth/constants";
+import {
+  USER_SESSION_COOKIE,
+  MASTER_SESSION_COOKIE,
+} from "@/lib/auth/constants";
 
 // ---------------------------------------------------------------------------
 // In-memory cashier cache — survives across warm Edge invocations
@@ -39,7 +42,10 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const cashierCache = new Map<string, CachedCashier>();
 const CACHE_TTL_MS = 60_000;
 
-async function resolveCashier(slug: string, token: string): Promise<CachedCashier | null> {
+async function resolveCashier(
+  slug: string,
+  token: string,
+): Promise<CachedCashier | null> {
   const cacheKey = `${slug}:${token}`;
   const cached = cashierCache.get(cacheKey);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached;
@@ -67,7 +73,12 @@ async function resolveCashier(slug: string, token: string): Promise<CachedCashie
 
 async function validateUserSession(
   token: string,
-): Promise<{ valid: boolean; userId?: string; cashierId?: string; role?: string }> {
+): Promise<{
+  valid: boolean;
+  userId?: string;
+  cashierId?: string;
+  role?: string;
+}> {
   try {
     const result = await pool.query(
       "SELECT user_id, cashier_id, role FROM user_sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
@@ -142,7 +153,8 @@ export default async function proxy(req: NextRequest) {
 
   const cashier = await resolveCashier(slug, token);
   if (!cashier) return NextResponse.redirect(new URL("/", req.url));
-  if (!cashier.isActive) return NextResponse.redirect(new URL("/cashier-inactive", req.url));
+  if (!cashier.isActive)
+    return NextResponse.redirect(new URL("/cashier-inactive", req.url));
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set(CASHIER_ID_HEADER, cashier.id);
@@ -154,7 +166,11 @@ export default async function proxy(req: NextRequest) {
     const sessionToken = req.cookies.get(USER_SESSION_COOKIE)?.value;
     if (sessionToken) {
       const sessionData = await validateUserSession(sessionToken);
-      if (sessionData.valid && sessionData.cashierId === cashier.id && sessionData.role) {
+      if (
+        sessionData.valid &&
+        sessionData.cashierId === cashier.id &&
+        sessionData.role
+      ) {
         return NextResponse.redirect(
           new URL(homeForRole(sessionData.role, slug, token), req.url),
         );
@@ -166,10 +182,10 @@ export default async function proxy(req: NextRequest) {
   const roleRequired = rest.startsWith("/admin")
     ? "admin"
     : rest.startsWith("/clerk")
-    ? "clerk"
-    : rest.startsWith("/player")
-    ? "player"
-    : null;
+      ? "clerk"
+      : rest.startsWith("/player")
+        ? "player"
+        : null;
 
   if (!roleRequired) {
     return NextResponse.next({ request: { headers: requestHeaders } });
@@ -188,7 +204,9 @@ export default async function proxy(req: NextRequest) {
 
   const sessionData = await validateUserSession(sessionToken);
   if (!sessionData.valid) {
-    const response = NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+    const response = NextResponse.redirect(
+      new URL(`/${slug}/${token}/sign-in`, req.url),
+    );
     response.cookies.delete(USER_SESSION_COOKIE);
     return response;
   }
