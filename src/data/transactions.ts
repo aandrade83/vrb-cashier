@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { transactions, cashierUsers, paymentMethods } from "@/db/schema";
-import { eq, count, desc, and } from "drizzle-orm";
+import { transactions, cashierUsers, paymentMethods, transactionUpdates } from "@/db/schema";
+import { eq, count, desc, and, isNotNull } from "drizzle-orm";
 
 export type PlayerTransaction = {
   id: string;
@@ -65,6 +65,94 @@ export async function getNextTransactionSequence(
     .from(transactions)
     .where(and(eq(transactions.type, type), eq(transactions.cashierId, cashierId)));
   return (result?.total ?? 0) + 1;
+}
+
+export type PlayerTransactionDetail = {
+  id: string;
+  referenceCode: string;
+  type: "deposit" | "payout";
+  status: string;
+  amount: string;
+  currency: string;
+  methodName: string;
+  internalNote: string | null;
+  deniedReason: string | null;
+  createdAt: Date;
+  notesToPlayer: {
+    id: string;
+    noteToPlayer: string;
+    createdAt: Date;
+  }[];
+};
+
+export async function getPlayerTransactionDetail(
+  transactionId: string,
+  playerId: string,
+  cashierId: string,
+): Promise<PlayerTransactionDetail | null> {
+  const [row] = await db
+    .select({
+      id: transactions.id,
+      referenceCode: transactions.referenceCode,
+      type: transactions.type,
+      status: transactions.status,
+      amount: transactions.amount,
+      currency: transactions.currency,
+      methodName: paymentMethods.name,
+      internalNote: transactions.internalNote,
+      deniedReason: transactions.deniedReason,
+      createdAt: transactions.createdAt,
+    })
+    .from(transactions)
+    .innerJoin(paymentMethods, eq(transactions.methodId, paymentMethods.id))
+    .where(
+      and(
+        eq(transactions.id, transactionId),
+        eq(transactions.playerId, playerId),
+        eq(transactions.cashierId, cashierId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  const notesToPlayer = await db
+    .select({
+      id: transactionUpdates.id,
+      noteToPlayer: transactionUpdates.noteToPlayer,
+      createdAt: transactionUpdates.createdAt,
+    })
+    .from(transactionUpdates)
+    .where(
+      and(
+        eq(transactionUpdates.transactionId, transactionId),
+        isNotNull(transactionUpdates.noteToPlayer),
+      ),
+    )
+    .orderBy(desc(transactionUpdates.createdAt));
+
+  return {
+    ...row,
+    notesToPlayer: notesToPlayer.filter((n) => n.noteToPlayer !== null) as PlayerTransactionDetail["notesToPlayer"],
+  };
+}
+
+export async function updatePlayerTransactionNote(
+  transactionId: string,
+  playerId: string,
+  cashierId: string,
+  note: string,
+): Promise<void> {
+  await db
+    .update(transactions)
+    .set({ internalNote: note || null })
+    .where(
+      and(
+        eq(transactions.id, transactionId),
+        eq(transactions.playerId, playerId),
+        eq(transactions.cashierId, cashierId),
+      ),
+    );
 }
 
 export async function getPlayerById(

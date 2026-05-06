@@ -1,8 +1,5 @@
 // =============================================================================
-// VRB Cashier — Proxy (Next.js 16 edge proxy)
-//
-// Uses direct Neon SQL (HTTP transport) instead of internal self-fetches,
-// which fail on Vercel preview deployments.
+// VRB Cashier — Proxy (Next.js middleware, Node.js runtime)
 //
 // Route hierarchy:
 //   /master/*                    → Cookie-presence gate; DB validation in pages
@@ -14,8 +11,10 @@
 //   /cashier-inactive, /         → Public
 // =============================================================================
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import { Pool } from "pg";
 import {
   CASHIER_ID_HEADER,
   CASHIER_SLUG_HEADER,
@@ -35,6 +34,8 @@ interface CachedCashier {
   cachedAt: number;
 }
 
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
 const cashierCache = new Map<string, CachedCashier>();
 const CACHE_TTL_MS = 60_000;
 
@@ -44,20 +45,17 @@ async function resolveCashier(slug: string, token: string): Promise<CachedCashie
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached;
 
   try {
-    const sql = neon(process.env.DATABASE_URL!);
-    const rows = await sql`
-      SELECT id, slug, token, is_active
-      FROM cashiers
-      WHERE slug = ${slug} AND token = ${token}
-      LIMIT 1
-    `;
-    if (!rows[0]) return null;
+    const result = await pool.query(
+      "SELECT id, slug, token, is_active FROM cashiers WHERE slug = $1 AND token = $2 LIMIT 1",
+      [slug, token],
+    );
+    if (!result.rows[0]) return null;
 
     const entry: CachedCashier = {
-      id: rows[0].id as string,
-      slug: rows[0].slug as string,
-      token: rows[0].token as string,
-      isActive: rows[0].is_active as boolean,
+      id: result.rows[0].id as string,
+      slug: result.rows[0].slug as string,
+      token: result.rows[0].token as string,
+      isActive: result.rows[0].is_active as boolean,
       cachedAt: Date.now(),
     };
     cashierCache.set(cacheKey, entry);
@@ -71,19 +69,16 @@ async function validateUserSession(
   token: string,
 ): Promise<{ valid: boolean; userId?: string; cashierId?: string; role?: string }> {
   try {
-    const sql = neon(process.env.DATABASE_URL!);
-    const rows = await sql`
-      SELECT user_id, cashier_id, role
-      FROM user_sessions
-      WHERE token = ${token} AND expires_at > NOW()
-      LIMIT 1
-    `;
-    if (!rows[0]) return { valid: false };
+    const result = await pool.query(
+      "SELECT user_id, cashier_id, role FROM user_sessions WHERE token = $1 AND expires_at > NOW() LIMIT 1",
+      [token],
+    );
+    if (!result.rows[0]) return { valid: false };
     return {
       valid: true,
-      userId: rows[0].user_id as string,
-      cashierId: rows[0].cashier_id as string,
-      role: rows[0].role as string,
+      userId: result.rows[0].user_id as string,
+      cashierId: result.rows[0].cashier_id as string,
+      role: result.rows[0].role as string,
     };
   } catch {
     return { valid: false };

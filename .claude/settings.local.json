@@ -152,7 +152,18 @@
       "Bash(winget list *)",
       "Bash(where gh *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git diff *)",
+      "Bash(git cherry-pick *)",
+      "Bash(grep -E \"\\\\.\\(ts|js|sql\\)$\")",
+      "Bash(grep -E \"\\\\.\\(sql|ts\\)$\")",
+      "Bash(git status *)",
+      "Bash(git check-ignore *)",
+      "Bash(git ls-files *)",
+      "Bash(findstr /I \"\\(route|page\\)\")",
+      "Bash(findstr layout *)",
+      "PowerShell(git *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\PROJECTS\\\\CASHIER\\\\vrb-cashier\" -Recurse -Name)"
     ]
   }
 }

@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/lib/button-variants";
 import {
   Table,
   TableBody,
@@ -10,18 +12,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getPlayerById, getPlayerTransactions } from "@/data/transactions";
+import { getPlayerById, getPlayerTransactions, getPlayerTransactionDetail } from "@/data/transactions";
 import { STATUS_LABELS } from "@/data/admin-transactions";
 import { TX_STATUS_BADGE_VARIANT } from "@/lib/transaction-statuses";
 import { getCashierPageAccess } from "@/lib/auth/cashier-access";
 import { getOrCreateShadowPlayer } from "@/lib/master-actor";
+import { TransactionDetailDialog } from "./_components/TransactionDetailDialog";
 
 export default async function CashierTransactionsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; token: string }>;
+  searchParams?: Promise<{ tx?: string }>;
 }) {
   const { slug, token } = await params;
+  const { tx: selectedTxId } = (await searchParams) ?? {};
   const access = await getCashierPageAccess("player");
 
   if (!access) {
@@ -38,6 +44,13 @@ export default async function CashierTransactionsPage({
 
   const player = resolvedUserId ? await getPlayerById(resolvedUserId, cashierId) : null;
   const txList = player ? await getPlayerTransactions(player.id, cashierId) : [];
+
+  const selectedDetail =
+    selectedTxId && player
+      ? await getPlayerTransactionDetail(selectedTxId, player.id, cashierId)
+      : null;
+
+  const basePath = `/${slug}/${token}/player/transactions`;
 
   return (
     <div className="space-y-4 max-w-4xl">
@@ -57,6 +70,7 @@ export default async function CashierTransactionsPage({
                   <TableHead>Method</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -80,6 +94,15 @@ export default async function CashierTransactionsPage({
                         {STATUS_LABELS[tx.status] ?? tx.status}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <Link
+                        href={`?tx=${tx.id}`}
+                        scroll={false}
+                        className={buttonVariants({ variant: "ghost", size: "sm" })}
+                      >
+                        Open
+                      </Link>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -87,6 +110,15 @@ export default async function CashierTransactionsPage({
           )}
         </CardContent>
       </Card>
+
+      {selectedDetail && (
+        <TransactionDetailDialog
+          detail={selectedDetail}
+          slug={slug}
+          token={token}
+          basePath={basePath}
+        />
+      )}
     </div>
   );
 }
