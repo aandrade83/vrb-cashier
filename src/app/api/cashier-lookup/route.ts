@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { cashiers } from "@/db/schema";
 import { eq, isNotNull } from "drizzle-orm";
+import { getAppUrl } from "@/lib/app-url";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const origin = req.nextUrl.origin;
+  const origin = getAppUrl();
   const cashierUrl = `${origin}/${match.slug}/${match.token}/`;
 
   return NextResponse.json(

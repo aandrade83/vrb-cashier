@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { logLoginAttempt } from "@/lib/auth/rate-limit";
 import { randomBytes } from "crypto";
+import { getAppUrl } from "@/lib/app-url";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -145,7 +146,7 @@ export async function POST(req: NextRequest) {
 
   await db.insert(externalLoginTokens).values({ token: otp, cashierId, userId, expiresAt });
 
-  const origin = req.nextUrl.origin;
+  const origin = getAppUrl();
   const autoLoginUrl = `${origin}/${cashier.slug}/${cashier.token}/auto-login?otp=${otp}`;
 
   return NextResponse.json(
