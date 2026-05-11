@@ -4,6 +4,7 @@ import { cashiers, cashierUsers, externalLoginTokens } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { createUserSession } from "@/lib/auth/session";
 import { buildPath } from "@/lib/paths";
+import { getAppUrl } from "@/lib/app-url";
 
 export async function GET(
   req: NextRequest,
@@ -13,7 +14,7 @@ export async function GET(
   const otp = req.nextUrl.searchParams.get("otp");
 
   const invalid = () =>
-    NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.nextUrl.origin));
+    NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, getAppUrl()));
 
   if (!otp) return invalid();
 
@@ -58,5 +59,5 @@ export async function GET(
   await createUserSession(user.id, cashier.id, "player");
 
   const dashboard = buildPath(slug, token, "player", "dashboard");
-  return NextResponse.redirect(new URL(dashboard, req.nextUrl.origin));
+  return NextResponse.redirect(new URL(dashboard, getAppUrl()));
 }

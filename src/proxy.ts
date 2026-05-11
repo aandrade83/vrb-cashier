@@ -24,6 +24,7 @@ import {
   USER_SESSION_COOKIE,
   MASTER_SESSION_COOKIE,
 } from "@/lib/auth/constants";
+import { getAppUrl } from "@/lib/app-url";
 
 // ---------------------------------------------------------------------------
 // In-memory cashier cache — survives across warm Edge invocations
@@ -108,6 +109,7 @@ function homeForRole(role: string, slug: string, token: string): string {
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const base = getAppUrl();
 
   // ------------------------------------------------------------------
   // 1. Fully public routes
@@ -136,7 +138,7 @@ export default async function proxy(req: NextRequest) {
 
     const hasCookie = !!req.cookies.get(MASTER_SESSION_COOKIE)?.value;
     if (!hasCookie) {
-      return NextResponse.redirect(new URL("/master/login", req.url));
+      return NextResponse.redirect(new URL("/master/login", base));
     }
     return NextResponse.next();
   }
@@ -152,9 +154,9 @@ export default async function proxy(req: NextRequest) {
   const rest = cashierRouteMatch[3] ?? "/";
 
   const cashier = await resolveCashier(slug, token);
-  if (!cashier) return NextResponse.redirect(new URL("/", req.url));
+  if (!cashier) return NextResponse.redirect(new URL("/", base));
   if (!cashier.isActive)
-    return NextResponse.redirect(new URL("/cashier-inactive", req.url));
+    return NextResponse.redirect(new URL("/cashier-inactive", base));
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set(CASHIER_ID_HEADER, cashier.id);
@@ -172,7 +174,7 @@ export default async function proxy(req: NextRequest) {
         sessionData.role
       ) {
         return NextResponse.redirect(
-          new URL(homeForRole(sessionData.role, slug, token), req.url),
+          new URL(homeForRole(sessionData.role, slug, token), base),
         );
       }
     }
@@ -199,29 +201,29 @@ export default async function proxy(req: NextRequest) {
 
   const sessionToken = req.cookies.get(USER_SESSION_COOKIE)?.value;
   if (!sessionToken) {
-    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, base));
   }
 
   const sessionData = await validateUserSession(sessionToken);
   if (!sessionData.valid) {
     const response = NextResponse.redirect(
-      new URL(`/${slug}/${token}/sign-in`, req.url),
+      new URL(`/${slug}/${token}/sign-in`, base),
     );
     response.cookies.delete(USER_SESSION_COOKIE);
     return response;
   }
 
   if (sessionData.cashierId !== cashier.id) {
-    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, base));
   }
 
   if (!sessionData.role) {
-    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, req.url));
+    return NextResponse.redirect(new URL(`/${slug}/${token}/sign-in`, base));
   }
 
   if (sessionData.role !== roleRequired) {
     return NextResponse.redirect(
-      new URL(homeForRole(sessionData.role, slug, token), req.url),
+      new URL(homeForRole(sessionData.role, slug, token), base),
     );
   }
 
